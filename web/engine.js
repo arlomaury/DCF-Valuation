@@ -292,16 +292,18 @@
    *  out its grid) would keep doing so for ten years while its growth fades,
    *  and the explicit years and the terminal value would describe two
    *  different businesses. */
-  function capexSchedule(a, n, coc) {
+  function capexSchedule(a, n, rate) {
     const c0 = a.capexPct;
-    const steady = steadyStateCapexPct(a, n, coc);
+    const steady = steadyStateCapexPct(a, n, rate);
     if (!a.capexFade || !isNum(steady)) return Array.from({ length: n }, () => c0);
     return Array.from({ length: n }, (_, i) => lerp(c0, steady, n > 1 ? (i + 1) / n : 1));
   }
 
-  function steadyStateCapexPct(a, n, coc) {
+  // `rate` is the discount rate the terminal value uses, so a missing RONIC
+  // falls back to the same number in both places.
+  function steadyStateCapexPct(a, n, rate) {
     const g = a.terminalGrowth;
-    const ronic = isNum(a.ronic) && a.ronic > 0 ? a.ronic : (coc && coc.wacc);
+    const ronic = isNum(a.ronic) && a.ronic > 0 ? a.ronic : rate;
     const m = a.ebitMargin && a.ebitMargin[n - 1];
     const tT = isNum(a.terminalTax) ? a.terminalTax : a.marginalTax;
     if (![g, ronic, m, tT, a.daPct, a.nwcPct].every(isNum) || ronic <= 0) return null;
@@ -310,7 +312,7 @@
     return a.daPct + Math.max(netCapex, 0);
   }
 
-  function project(fin, a, mode, coc) {
+  function project(fin, a, mode, coc, rate) {
     const h = historicalMetrics(fin);
     const base = h[0];
     if (!base || !isNum(base.revenue) || base.revenue <= 0) return null;
@@ -319,7 +321,7 @@
     let nwc = rev * a.nwcPct;               // normalised starting working capital
     let debt = a.debt || 0;
     const debtToRev = debt / base.revenue;
-    const capexPath = capexSchedule(a, n, coc);
+    const capexPath = capexSchedule(a, n, isNum(rate) ? rate : (coc ? (mode === 'levered' ? coc.ke : coc.wacc) : null));
     const rows = [];
     for (let i = 0; i < n; i++) {
       const g = a.revenueGrowth[i] ?? 0;
@@ -365,7 +367,7 @@
     const h = historicalMetrics(fin);
     const coc = costOfCapital(cocInputs(a, h[0]));
     const r = isNum(discountOverride) ? discountOverride : (mode === 'levered' ? coc.ke : coc.wacc);
-    const proj = project(fin, a, mode, coc);
+    const proj = project(fin, a, mode, coc, r);
     if (!proj) return null;
     const n = proj.length;
     const last = proj[n - 1];

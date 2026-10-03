@@ -234,3 +234,12 @@ def test_ebit_derived_for_years_without_an_operating_income_subtotal():
     p = sd.parse_company_facts({"facts": facts})
     assert p["aligned"]["operatingIncome"] == [160, 160, 160, 170, 170, 170]
     assert "operatingIncome" in p["derived"]
+
+
+def test_gap_outside_the_shown_years_does_not_mark_ebit_derived():
+    facts = demo_company()["facts"]
+    for y in (2018, 2019):                         # pre-tax income only, older than shown
+        add(facts, "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+            "USD", [_dur(50e6, f"{y}-12-31", f"{y + 1}-02-15")])
+    p = sd.parse_company_facts({"facts": facts})
+    assert "operatingIncome" not in p["derived"]

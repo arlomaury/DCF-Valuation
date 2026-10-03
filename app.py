@@ -74,7 +74,10 @@ def app(environ, start_response):
     path = environ.get("PATH_INFO") or "/"
     params = urllib.parse.parse_qs(environ.get("QUERY_STRING", ""))
     if not path.startswith("/api/"):
-        return _static(start_response, path)
+        try:
+            return _static(start_response, path)
+        except (ValueError, OSError):            # e.g. a NUL byte in the path
+            return _json(start_response, {"error": "not found"}, 404)
     if path.startswith("/api/company/"):              # /api/company/AAPL works too
         params["ticker"] = [urllib.parse.unquote(path[len("/api/company/"):])]
         path = "/api/company"
@@ -91,7 +94,7 @@ def app(environ, start_response):
         if not dcf_model.TICKER_RE.match(ticker):
             return _json(start_response, {"error": "Enter a valid ticker symbol, e.g. AAPL."}, 400)
         return _json(start_response, dcf_model.load_company(ticker), cache=CACHE_COMPANY)
-    except LookupError as e:
+    except dcf_model.TickerNotFound as e:
         return _json(start_response, {"error": str(e)}, 404, cache=CACHE_COMPANY)
     except (ValueError, dcf_model.FetchError, RuntimeError) as e:
         return _json(start_response, {"error": str(e)}, 502)

@@ -244,3 +244,10 @@ test('missing capex is said plainly, not described as a 3-year average', () => {
   assert.strictEqual(assumptions.capexPct, assumptions.daPct);
   assert.match(why.capexPct, /not found/);
 });
+
+test('capex fade: with no RONIC it falls back to the same rate as the terminal value (levered too)', () => {
+  const a = simpleAssumptions({ capexPct: 0.40, capexFade: true, ronic: 0, revenueGrowth: Array(5).fill(0.02) });
+  const v = DCF.value(simpleFin(), a, 'levered');
+  const last = v.proj[v.proj.length - 1];
+  close(last.capex - last.da + last.dNwc, (0.02 / v.coc.ke) * last.nopat, 1e-9);
+});

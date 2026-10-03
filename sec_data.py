@@ -388,7 +388,11 @@ def parse_company_facts(raw):
         pti = series["preTaxIncome"]["values"]
         ie = (series.get("interestExpense") or {}).get("values", {})
         ebit = series.get("operatingIncome") or {"values": {}, "tags": {}}
-        gaps = [y for y in pti if y not in ebit["values"]]
+        # Only the years that will be shown (anchored on revenue, as below),
+        # so a gap outside that window doesn't mark reported numbers derived.
+        rev_years = (series.get("revenue") or {}).get("values")
+        shown = set(sorted(rev_years, reverse=True)[:MAX_YEARS]) if rev_years else set(pti)
+        gaps = [y for y in pti if y in shown and y not in ebit["values"]]
         if gaps:
             for y in gaps:
                 ebit["values"][y] = pti[y] + (ie.get(y) or 0)

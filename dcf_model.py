@@ -123,6 +123,11 @@ CERT_HELP = ("HTTPS certificate check failed. On a Mac with Python from python.o
              "your company's certificate file.")
 
 
+class TickerNotFound(LookupError):
+    """The ticker is not in SEC's list. Distinct from any other LookupError
+    (a KeyError is a bug, not a missing company, and must not become a 404)."""
+
+
 class FetchError(Exception):
     pass
 
@@ -382,7 +387,7 @@ def load_company(ticker):
         return load_demo(ticker)
     match = find_company(ticker)
     if not match:
-        raise LookupError(
+        raise TickerNotFound(
             f'Ticker "{ticker}" was not found in SEC EDGAR. It may be a foreign company '
             "that files a 20-F, an OTC stock, or a fund. US-listed companies that file "
             "10-Ks are supported.")
@@ -391,15 +396,20 @@ def load_company(ticker):
     note = None
     try:
         parsed = sec_data.parse_company_facts(company_facts(cik))
-    except (ValueError, FetchError):
+    except (ValueError, FetchError) as e:
         # A company that has just reorganized under a new holding company
         # trades under the new entity before it has filed a single 10-K; its
-        # history is all under the old registration.
+        # history is all under the old registration. Only for "no data" -
+        # a timeout must not quietly switch to the old company.
         pred = PREDECESSORS.get(int(cik))
-        if not pred:
+        no_data = isinstance(e, ValueError) or "HTTP 404" in str(e)
+        if not pred or not no_data:
             raise
         cik, old_name = pred
-        parsed = sec_data.parse_company_facts(company_facts(cik))
+        try:
+            parsed = sec_data.parse_company_facts(company_facts(cik))
+        except (ValueError, FetchError):
+            raise e from None
         note = (f"{match.get('title', ticker)} is a new holding company with no annual report "
                 f"of its own yet, so these are the filings of its predecessor, {old_name}. "
                 "Check the share count against the new company's latest filing.")
@@ -518,7 +528,7 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/health":
                 return self._json({"ok": True, "secContact": bool(sec_contact())})
             return self._static(parsed.path)
-        except LookupError as e:
+        except TickerNotFound as e:
             return self._json({"error": str(e)}, 404)
         except (ValueError, FetchError, RuntimeError) as e:
             return self._json({"error": str(e)}, 502)

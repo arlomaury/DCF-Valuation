@@ -62,3 +62,15 @@ def test_ticker_in_the_path(contact, monkeypatch):
     monkeypatch.setitem(dcf_model.DEMO, "on", True)
     assert call("/api/company/ACME")[0] == 200
     assert call("/api/company/%3Cx%3E")[0] == 400
+
+
+def test_nul_byte_path_is_404_not_500():
+    assert call("/\x00")[0] == 404
+
+
+def test_a_bug_is_a_500_not_a_cached_404(contact, monkeypatch):
+    def boom(t):
+        raise KeyError("boom")
+    monkeypatch.setattr(dcf_model, "load_company", boom)
+    code, headers, _ = call("/api/company/AAPL")
+    assert code == 500 and headers["Cache-Control"] == "no-store"
