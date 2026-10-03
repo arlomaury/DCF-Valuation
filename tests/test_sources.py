@@ -123,3 +123,20 @@ def test_cboe_price(fake_http):
     assert q["price"] == 333.6 and "Cboe" in q["source"]
     fake_http["cdn-api.cboe.com"] = json.dumps({"data": {}})
     assert dcf_model._price_cboe("ZZZZ") is None
+
+
+def test_new_holding_company_falls_back_to_predecessor_filings(fake_http, monkeypatch):
+    import demo_data
+    monkeypatch.setenv("DCF_SEC_CONTACT", "t@example.com")
+    monkeypatch.setattr(dcf_model, "PREDECESSORS", {999: (111, "Old Co")})
+    monkeypatch.setattr(dcf_model, "share_price", lambda t: {"price": 10, "currency": "USD", "source": "x"})
+    fake_http["company_tickers.json"] = json.dumps({"0": {"cik_str": 999, "ticker": "NEWCO", "title": "NewCo Holdings"}})
+    fake_http["CIK0000000999.json"] = json.dumps({"facts": {"us-gaap": {"Assets": {"units": {"USD": []}}}}})
+    fake_http["CIK0000000111.json"] = json.dumps(demo_data.demo_company())
+    d = dcf_model.load_company("NEWCO")
+    assert d["cik"] == 111 and d["financials"]["aligned"]["revenue"][0] > 0
+    assert "Old Co" in d["filingsNote"]
+    # Without a known predecessor the error explains itself.
+    monkeypatch.setattr(dcf_model, "PREDECESSORS", {})
+    with pytest.raises(ValueError, match="holding company"):
+        dcf_model.load_company("NEWCO")

@@ -199,6 +199,7 @@ function CompanyPage({ onLoad, loading, error, data, a, set, mode, setMode }) {
             </div>
             <p className="text-[11px] text-slate-500 mt-3">Balance sheet for the equity bridge: {lb?.date ? `latest filing dated ${lb.date}` : 'latest 10-K'}. Financial statements: SEC EDGAR XBRL.</p>
             <div className="mt-2"><Warnings items={[
+              data.filingsNote,
               data.shares?.needsCheck && 'The share count on the filing cover page did not match the other share counts. Check diluted shares against the latest 10-Q before relying on the per-share value.',
               lb?.staleNote,
               !(a.price > 0) && 'No share price was found. Enter it above - it sets the market-value weights in the WACC.',

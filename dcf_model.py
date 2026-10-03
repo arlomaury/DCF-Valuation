@@ -370,6 +370,13 @@ def load_demo(ticker):
             "market": market_inputs(demo=True)}
 
 
+# New holding company CIK -> (predecessor CIK, name), for reorganizations where
+# the ticker moved to an entity that has not filed a 10-K yet.
+PREDECESSORS = {
+    2115436: (34088, "Exxon Mobil Corp"),       # ExxonMobil Holdings Corp, 2026
+}
+
+
 def load_company(ticker):
     if DEMO["on"]:
         return load_demo(ticker)
@@ -381,7 +388,21 @@ def load_company(ticker):
             "10-Ks are supported.")
     cik = match["cik_str"]
     print(f"\n📡 {ticker}: {match.get('title')} (CIK {cik})")
-    parsed = sec_data.parse_company_facts(company_facts(cik))
+    note = None
+    try:
+        parsed = sec_data.parse_company_facts(company_facts(cik))
+    except (ValueError, FetchError):
+        # A company that has just reorganized under a new holding company
+        # trades under the new entity before it has filed a single 10-K; its
+        # history is all under the old registration.
+        pred = PREDECESSORS.get(int(cik))
+        if not pred:
+            raise
+        cik, old_name = pred
+        parsed = sec_data.parse_company_facts(company_facts(cik))
+        note = (f"{match.get('title', ticker)} is a new holding company with no annual report "
+                f"of its own yet, so these are the filings of its predecessor, {old_name}. "
+                "Check the share count against the new company's latest filing.")
     profile = company_profile(cik)
     industry = md.industry_for_sic(profile.get("sic"))
     quote = share_price(match["ticker"])
@@ -396,6 +417,7 @@ def load_company(ticker):
         "shares": sec_data.choose_share_count(parsed),
         "quote": quote,
         "market": market_inputs(),
+        "filingsNote": note,
     }
 
 

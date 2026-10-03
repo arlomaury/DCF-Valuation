@@ -399,7 +399,9 @@ def parse_company_facts(raw):
     # Years: anchored on revenue (fall back to EBIT / net income).
     anchor = next((series[k] for k in ("revenue", "operatingIncome", "netIncome") if series.get(k)), None)
     if not anchor:
-        raise ValueError("Could not find annual revenue or earnings in this company's 10-K filings.")
+        raise ValueError("Could not find annual revenue or earnings in this company's 10-K filings. "
+                         "It may be a recent listing or a newly formed holding company that has "
+                         "not filed an annual report yet.")
     years = sorted(anchor["values"], reverse=True)[:MAX_YEARS]
 
     aligned, sources = {}, {}
