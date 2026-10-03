@@ -1,0 +1,6 @@
+tests/
+docs/
+node_modules/
+scripts/
+web/src/
+.dcf_model_cache/

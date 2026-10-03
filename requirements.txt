@@ -1,3 +1,5 @@
-# Optional - the app runs on the Python standard library alone.
+# The app runs on the Python standard library alone. This file is also what the
+# hosted (Vercel) version installs, so it stays small.
 certifi>=2024.2.2   # CA certificates (fixes HTTPS errors on python.org macOS builds)
-yfinance>=0.2.40   # most reliable share-price source
+# Optional when running on your own computer:  pip install yfinance
+# (the most reliable share-price source; the app falls back to Yahoo/Stooq without it)

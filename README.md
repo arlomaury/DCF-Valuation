@@ -1,6 +1,6 @@
 # DCF Valuation Model
 
-**A local web app that values any US-listed company with a discounted cash flow model built from its SEC filings, a bottom-up cost of capital, and assumptions that explain themselves.**
+**A web app that values any US-listed company with a discounted cash flow model built from its SEC filings, a bottom-up cost of capital, and assumptions that explain themselves.**
 
 Type a ticker. The app pulls up to six years of 10-K data from SEC EDGAR, the latest balance sheet from the most recent 10-Q, today's 10-year Treasury yield, the company's industry beta and credit spread, and the share price. It then builds a 10-year forecast. Every default comes with a one-line reason, and you can change any number.
 
@@ -19,9 +19,13 @@ python3 dcf_model.py --email you@example.com   # first run only; SEC requires a 
 python3 dcf_model.py                           # opens http://127.0.0.1:8787
 ```
 
-You need Python 3.9+, with no required packages. Optional extras: `pip install -r requirements.txt` adds `certifi`, which fixes HTTPS certificate errors on python.org builds for macOS, and `yfinance`, a more reliable share-price source.
+You need Python 3.9+, with no required packages. Optional extras: `pip install -r requirements.txt` adds `certifi`, which fixes HTTPS certificate errors on python.org builds for macOS, and `pip install yfinance` adds a more reliable share-price source.
 
 To try it without internet access or an email, run `python3 dcf_model.py --demo`.
+
+## Hosting it online
+
+The same app deploys to Vercel as a static page (`web/`) plus two read-only serverless endpoints (`api/search.py`, `api/company.py`). Import the repository in Vercel, add one environment variable, `DCF_SEC_CONTACT`, set to the contact email SEC requires, and deploy. Nothing needs building, and there are no accounts or keys: the endpoints only read public data and keep no user state. Lookups are cached at Vercel's edge for an hour, so repeat visitors don't reach SEC again.
 
 ## How the valuation works
 
