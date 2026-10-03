@@ -4,6 +4,8 @@
 
 Type a ticker. The app pulls up to six years of 10-K data from SEC EDGAR, the latest balance sheet from the most recent 10-Q, today's 10-year Treasury yield, the company's industry beta and credit spread, and the share price. It then builds a 10-year forecast. Every default comes with a one-line reason, and you can change any number.
 
+**Try it:** [dcf-valuation-ecru.vercel.app](https://dcf-valuation-ecru.vercel.app) — no account needed. Type a ticker such as MSFT or KO.
+
 ![Valuation summary](docs/valuation.png)
 
 ![Projection assumptions, each with the reasoning behind its default](docs/assumptions.png)
