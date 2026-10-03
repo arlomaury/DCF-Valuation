@@ -449,7 +449,11 @@ function ValuationPage({ v, a, mode, data }) {
         <Stat label={up >= 0 ? 'Upside' : 'Downside'} value={pct(up)} tone={up >= 0 ? 'green' : 'red'} />
         <Stat label="Terminal value share" value={pct(v.tvShare)} sub="of total present value" tone="slate" />
       </div>
-      <Warnings items={v.warnings} />
+      <Warnings items={[
+        data.isFinancial && 'Financial company: a free-cash-flow DCF is not a reliable method for banks and insurers - treat this value with caution.',
+        data.shares?.needsCheck && 'The share count needs checking (see the Company page).',
+        ...v.warnings,
+      ].filter(Boolean)} />
       <div className="grid lg:grid-cols-2 gap-5">
         <Card title="From cash flows to value per share" subtitle={`Balance-sheet items as of ${lb?.date || 'the latest 10-K'}.`}>
           <div className="space-y-1.5 text-sm">

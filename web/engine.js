@@ -426,7 +426,7 @@
 
     if (tvShare != null && tvShare > 0.85) warnings.push(`Terminal value is ${pct(tvShare)} of the total - the result depends mostly on the long-run assumptions.`);
     if (g > a.riskFree) warnings.push('Terminal growth is above the risk-free rate, which implies the company eventually outgrows the economy.');
-    if (isNum(a.ronic) && a.ronic < r && g > 0) warnings.push('Return on new investment is below the cost of capital, so growth destroys value in the terminal period.');
+    if (isNum(a.ronic) && a.ronic < r - 0.0005 && g > 0) warnings.push('Return on new investment is below the cost of capital, so growth destroys value in the terminal period.');
     if (!(a.shares > 0)) warnings.push('Shares outstanding are missing - enter them on the Company page.');
     if (!(a.price > 0)) warnings.push('No share price was found - enter it on the Company page so the market capital weights and upside can be computed.');
 

@@ -209,3 +209,10 @@ test('synthetic rating follows a price typed in later (large vs small firm table
   assert.equal(DCF.currentRating({ ...a, price: 100 }).rating, 'AAA');  // $10B cap -> large-firm table
   assert.equal(DCF.currentRating({ ...a, autoSpread: false, spread: 0.02, rating: 'x' }).spread, 0.02);
 });
+
+test('RONIC equal to WACC (after rounding) does not trigger the value-destruction warning', () => {
+  const a = simpleAssumptions();
+  const v0 = DCF.value(simpleFin(), a, 'unlevered');
+  const v = DCF.value(simpleFin(), { ...a, ronic: Math.round(v0.discountRate * 1e4) / 1e4 - 0.00004 }, 'unlevered');
+  assert.ok(!v.warnings.some((w) => /destroys value/.test(w)), v.warnings.join('; '));
+});
