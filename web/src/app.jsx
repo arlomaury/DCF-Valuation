@@ -136,11 +136,21 @@ function CompanyPage({ onLoad, loading, error, data, a, set, mode, setMode }) {
     setQ(v);
     clearTimeout(timer.current);
     if (v.trim().length < 2) { setResults([]); return; }
-    timer.current = setTimeout(async () => {
-      try { setResults((await api(`/api/search?q=${encodeURIComponent(v)}`)).results); } catch { setResults([]); }
+    const mine = setTimeout(async () => {
+      try {
+        const r = (await api(`/api/search?q=${encodeURIComponent(v)}`)).results;
+        if (timer.current === mine) setResults(r);   // ignore answers to an older query
+      } catch { if (timer.current === mine) setResults([]); }
     }, 250);
+    timer.current = mine;
   };
-  const load = (t) => { const s = (t || ticker).trim().toUpperCase(); if (s) { setTicker(s); setResults([]); setQ(''); onLoad(s); } };
+  const load = (t) => {
+    const s = (t || ticker).trim().toUpperCase();
+    if (!s) return;
+    clearTimeout(timer.current);              // a pending name search must not reopen the list
+    timer.current = null;
+    setTicker(s); setResults([]); setQ(''); onLoad(s);
+  };
   const lb = data?.financials?.latestBalance;
   return (
     <div className="max-w-3xl mx-auto space-y-5">
@@ -191,7 +201,7 @@ function CompanyPage({ onLoad, loading, error, data, a, set, mode, setMode }) {
             <div className="mt-2"><Warnings items={[
               data.shares?.needsCheck && 'The share count on the filing cover page did not match the other share counts. Check diluted shares against the latest 10-Q before relying on the per-share value.',
               lb?.staleNote,
-              !(data.quote?.price > 0) && 'No share price was found. Enter it above - it sets the market-value weights in the WACC.',
+              !(a.price > 0) && 'No share price was found. Enter it above - it sets the market-value weights in the WACC.',
             ].filter(Boolean)} /></div>
           </Card>
           <Card title="Method">
@@ -522,13 +532,17 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const latestLoad = useRef(0);
   const onLoad = useCallback(async (ticker) => {
+    const id = ++latestLoad.current;            // only the most recent request may land
     setLoading(true); setError(null);
     try {
       const d = await api(`/api/company?ticker=${encodeURIComponent(ticker)}`);
+      if (id !== latestLoad.current) return;
       const def = E.defaultAssumptions(d);
       setData(d); setDefaults(def); setA(def.assumptions);
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
+    } catch (e) { if (id === latestLoad.current) setError(e.message); }
+    finally { if (id === latestLoad.current) setLoading(false); }
   }, []);
 
   const set = (patch) => setA((p) => ({ ...p, ...patch }));
