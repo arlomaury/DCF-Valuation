@@ -75,6 +75,9 @@ def app(environ, start_response):
     params = urllib.parse.parse_qs(environ.get("QUERY_STRING", ""))
     if not path.startswith("/api/"):
         return _static(start_response, path)
+    if path.startswith("/api/company/"):              # /api/company/AAPL works too
+        params["ticker"] = [urllib.parse.unquote(path[len("/api/company/"):])]
+        path = "/api/company"
     if path not in ("/api/search", "/api/company"):
         return _json(start_response, {"error": "not found"}, 404)
     if not dcf_model.sec_contact():

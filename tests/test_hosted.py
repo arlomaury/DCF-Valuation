@@ -56,3 +56,9 @@ def test_bad_ticker_400_and_demo_company_cached(contact, monkeypatch):
     assert json.loads(body)["ticker"] == "ACME"
     code, _, body = call("/api/search", "q=ac")
     assert code == 200 and json.loads(body)["results"][0]["ticker"] == "ACME"
+
+
+def test_ticker_in_the_path(contact, monkeypatch):
+    monkeypatch.setitem(dcf_model.DEMO, "on", True)
+    assert call("/api/company/ACME")[0] == 200
+    assert call("/api/company/%3Cx%3E")[0] == 400
