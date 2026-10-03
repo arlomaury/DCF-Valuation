@@ -115,3 +115,11 @@ def test_http_get_does_not_retry_client_errors(monkeypatch):
     with pytest.raises(dcf_model.FetchError, match="404"):
         dcf_model.http_get("https://example.com/x")
     assert len(calls) == 1
+
+
+def test_cboe_price(fake_http):
+    fake_http["cdn-api.cboe.com"] = json.dumps({"data": {"symbol": "AAPL", "current_price": 333.6}})
+    q = dcf_model._price_cboe("AAPL")
+    assert q["price"] == 333.6 and "Cboe" in q["source"]
+    fake_http["cdn-api.cboe.com"] = json.dumps({"data": {}})
+    assert dcf_model._price_cboe("ZZZZ") is None

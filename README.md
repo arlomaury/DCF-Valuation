@@ -64,7 +64,7 @@ The valuation page flags problems as they come up: a terminal value above 85% of
 | Industry (SIC code) | SEC EDGAR submissions | Live, cached 7 days |
 | Risk-free rate | [US Treasury daily par yield curve](https://home.treasury.gov/resource-center/data-chart-center/interest-rates), FRED as fallback | Live, cached 6 hours |
 | Industry betas, margins, rating spreads, ERP | [Damodaran Online, NYU Stern](https://pages.stern.nyu.edu/~adamodar/) | January 2026 data set, in `market_data.py` |
-| Share price | yfinance (if installed) → Yahoo Finance → Stooq | Live. Can also be entered by hand. |
+| Share price | yfinance (if installed) → Cboe delayed quotes → Yahoo Finance → Stooq | Up to 15 minutes delayed. Can also be entered by hand. |
 
 ## Security and privacy
 

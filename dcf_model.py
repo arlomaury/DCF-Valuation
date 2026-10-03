@@ -7,7 +7,7 @@ Then the app opens at http://127.0.0.1:8787 in your browser.
 
 Financial statements come from SEC EDGAR (XBRL company facts), the risk-free
 rate from the US Treasury, industry betas / margins / credit spreads from
-Damodaran (NYU Stern), and the share price from Yahoo Finance or Stooq.
+Damodaran (NYU Stern), and the share price from Cboe, Yahoo Finance or Stooq.
 No API keys are needed.  Python standard library only; `certifi` and
 `yfinance` are used if installed.
 
@@ -319,6 +319,17 @@ def _price_yahoo(ticker):
             "source": "Yahoo Finance"} if price > 0 else None
 
 
+def _price_cboe(ticker):
+    """Cboe's public delayed-quote feed (about 15 minutes behind). Served from a
+    CDN, so unlike Yahoo it also answers requests from cloud hosts."""
+    sym = urllib.parse.quote(ticker.replace("-", ".").upper())
+    raw = http_get(f"https://cdn-api.cboe.com/api/global/delayed_quotes/quotes/{sym}.json",
+                   {"User-Agent": UA_BROWSER, "Accept": "application/json"}, timeout=12, retries=1)
+    data = json.loads(raw).get("data") or {}
+    price = float(data.get("current_price") or data.get("close") or 0)
+    return {"price": price, "currency": "USD", "source": "Cboe (15-min delayed)"} if price > 0 else None
+
+
 def _price_stooq(ticker):
     sym = urllib.parse.quote(ticker.replace("-", ".").lower() + ".us")
     text = http_get(f"https://stooq.com/q/l/?s={sym}&f=sd2t2ohlcv&h&e=csv",
@@ -331,7 +342,7 @@ def _price_stooq(ticker):
 
 
 def share_price(ticker):
-    for fn in (_price_yfinance, _price_yahoo, _price_stooq):
+    for fn in (_price_yfinance, _price_cboe, _price_yahoo, _price_stooq):
         try:
             q = fn(ticker)
             if q:
