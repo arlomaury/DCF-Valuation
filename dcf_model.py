@@ -192,7 +192,7 @@ def _cached_json(name, max_age, fetch):
 def company_tickers():
     def fetch():
         raw = http_get("https://www.sec.gov/files/company_tickers.json",
-                       {"User-Agent": sec_user_agent(), "Accept": "application/json"})
+                       {"User-Agent": sec_user_agent(), "Accept": "application/json", "Accept-Encoding": "gzip"})
         return json.loads(raw)
     return _cached_json("company_tickers.json", 86400, fetch)
 
@@ -211,7 +211,7 @@ def company_facts(cik):
 
     def fetch():
         raw = http_get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{padded}.json",
-                       {"User-Agent": sec_user_agent(), "Accept": "application/json"}, timeout=60)
+                       {"User-Agent": sec_user_agent(), "Accept": "application/json", "Accept-Encoding": "gzip"}, timeout=60)
         return json.loads(raw)
     return _cached_json(f"facts_{padded}.json", 6 * 3600, fetch)
 
@@ -222,7 +222,7 @@ def company_profile(cik):
 
     def fetch():
         raw = json.loads(http_get(f"https://data.sec.gov/submissions/CIK{padded}.json",
-                                  {"User-Agent": sec_user_agent(), "Accept": "application/json"}))
+                                  {"User-Agent": sec_user_agent(), "Accept": "application/json", "Accept-Encoding": "gzip"}))
         return {k: raw.get(k) for k in ("name", "sic", "sicDescription", "fiscalYearEnd",
                                         "exchanges", "stateOfIncorporation")}
     try:
