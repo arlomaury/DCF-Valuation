@@ -122,6 +122,22 @@ def _d(s):
     return date.fromisoformat(s)
 
 
+def _is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) != float("inf")
+
+
+def _valid_date(s):
+    """True for a YYYY-MM-DD string.  One malformed fact must be skipped,
+    not crash the whole company."""
+    if not isinstance(s, str):
+        return False
+    try:
+        date.fromisoformat(s)
+        return True
+    except ValueError:
+        return False
+
+
 def fiscal_label(end: str) -> int:
     """Fiscal-year label for a period ending on `end`.
 
@@ -160,12 +176,17 @@ def _tag_sources(facts, tag):
                 yield f"{n}:{name}" if n != "us-gaap" else name, units[unit_key]
 
 
-def _annual_by_year(entries, kind):
+def _annual_by_year(entries, kind, fy_ends=None):
     """{fiscal_year: fact} for annual facts, keeping the most recently filed
-    (i.e. restated) value for each year."""
+    (i.e. restated) value for each year.
+
+    For balance-sheet (instant) facts, `fy_ends` is the set of fiscal year-end
+    dates; values dated anything else - e.g. a debt figure "as of" a date
+    after year end, disclosed in a note - are ignored so they cannot replace
+    the year-end balance."""
     out = {}
     for f in entries:
-        if f.get("form") not in ANNUAL_FORMS or f.get("val") is None or not f.get("end"):
+        if f.get("form") not in ANNUAL_FORMS or not _is_num(f.get("val")) or not _valid_date(f.get("end")):
             continue
         days = _period_days(f)
         if kind == "duration":
@@ -174,6 +195,8 @@ def _annual_by_year(entries, kind):
                 continue
         elif days is not None:
             continue                    # instants have no start date
+        elif fy_ends is not None and f["end"] not in fy_ends:
+            continue
         try:
             yr = fiscal_label(f["end"])
         except ValueError:
@@ -184,14 +207,16 @@ def _annual_by_year(entries, kind):
     return out
 
 
-def extract_annual(facts, key):
-    """Return {'values': {year: val}, 'tags': {year: tag}} or None."""
+def extract_annual(facts, key, fy_ends=None):
+    """Return {'values': {year: val}, 'tags': {year: tag}, 'ends': {year: date}} or None."""
     tags, combine, kind = CONCEPTS[key]
-    per_year = {}                      # year -> list of (priority, tag, val)
+    per_year = {}                      # year -> list of (priority, tag, val, end)
+    ends = {}
     for prio, spec in enumerate(tags):
         for tag, entries in _tag_sources(facts, spec):
-            for yr, f in _annual_by_year(entries, kind).items():
+            for yr, f in _annual_by_year(entries, kind, fy_ends if kind == "instant" else None).items():
                 per_year.setdefault(yr, []).append((prio, tag, f["val"]))
+                ends.setdefault(yr, f["end"])
     if not per_year:
         return None
     values, used = {}, {}
@@ -205,7 +230,7 @@ def extract_annual(facts, key):
         else:
             prio, tag, val = min(cands, key=lambda c: c[0])
         values[yr], used[yr] = val, tag
-    return {"values": values, "tags": used}
+    return {"values": values, "tags": used, "ends": ends}
 
 
 def extract_latest_instant(facts, key, as_of=None, max_age_days=400):
@@ -219,10 +244,10 @@ def extract_latest_instant(facts, key, as_of=None, max_age_days=400):
     for prio, spec in enumerate(tags):
         for tag, entries in _tag_sources(facts, spec):
             for f in entries:
-                if f.get("form") not in BALANCE_FORMS or f.get("start") or f.get("val") is None:
+                if f.get("form") not in BALANCE_FORMS or f.get("start") or not _is_num(f.get("val")):
                     continue
                 end = f.get("end")
-                if not end:
+                if not _valid_date(end):
                     continue
                 if as_of and end > as_of:
                     continue
@@ -255,7 +280,8 @@ def shares_outstanding(facts):
     if not concept:
         return None
     entries = [f for f in concept.get("units", {}).get("shares", [])
-               if f.get("form") in BALANCE_FORMS and f.get("val")]
+               if f.get("form") in BALANCE_FORMS and _is_num(f.get("val"))
+               and f["val"] > 0 and _valid_date(f.get("end"))]
     if not entries:
         return None
     latest = max(entries, key=lambda f: (f.get("filed", ""), f.get("end", "")))
@@ -329,7 +355,16 @@ def parse_company_facts(raw):
                              "The model only reads US GAAP filings.")
         raise ValueError("No US GAAP financial data found for this company.")
 
-    series = {k: extract_annual(facts, k) for k in CONCEPTS}
+    # Income-statement items first; their period end dates define the fiscal
+    # year-ends that balance-sheet items must be dated at.
+    series = {k: extract_annual(facts, k) for k, v in CONCEPTS.items() if v[2] == "duration"}
+    fy_ends = set()
+    for k in ("revenue", "operatingIncome", "netIncome", "preTaxIncome"):
+        if series.get(k):
+            fy_ends |= set(series[k]["ends"].values())
+    for k, v in CONCEPTS.items():
+        if v[2] == "instant":
+            series[k] = extract_annual(facts, k, fy_ends or None)
 
     # D&A fallback: depreciation + amortization of intangibles.
     if not series.get("dna"):

@@ -193,3 +193,14 @@ def test_share_count_uses_balance_sheet_when_weighted_missing():
               "shares": {"value": 1.01e9, "classes": 1}}
     s = sd.choose_share_count(parsed)
     assert not s["needsCheck"] and s["value"] == pytest.approx(1.01e9)
+
+
+def test_subsequent_event_balance_does_not_replace_year_end():
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2025-06-30", "2025-08-20")])
+    # Year-end debt, and a later "as of" figure disclosed in the same 10-K.
+    from demo_data import _inst
+    add(facts, "LongTermDebtNoncurrent", "USD", [_inst(500, "2025-06-30", "2025-08-20"),
+                                                 _inst(900, "2025-08-15", "2025-08-20")])
+    p = sd.parse_company_facts({"facts": facts})
+    assert p["aligned"]["totalDebt"][0] == 500

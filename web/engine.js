@@ -178,6 +178,11 @@
       mT = isNum(industry.operatingMargin) && industry.operatingMargin > 0 ? industry.operatingMargin : 0.10;
       why.ebitMargin = `Operating margin is negative (${pct(m0)}), so it converges to the ${industry.name || 'market'} average of ${pct(mT)} by year ${n}.`;
     }
+    if (!why.ebitMargin && !isNum(latest.ebitMargin)) {
+      why.ebitMargin = isNum(m3)
+        ? `Last year's operating margin is not reported, so the 3-year average (${pct(m3)}) is used and held flat.`
+        : `No operating margin is reported, so a placeholder of ${pct(m0)} is used - replace it with your own estimate.`;
+    }
     if (!why.ebitMargin) {
       why.ebitMargin = `Latest operating margin (${pct(m0)}) held flat - no expansion assumed.`
         + (isNum(industry.operatingMargin) ? ` Industry average for reference: ${pct(industry.operatingMargin)}.` : '');
@@ -218,6 +223,11 @@
       riskFree: rf, erp: market.erp, marginalTax: tMarg,
       industry: data.industry, unleveredBeta: industry.unleveredBeta || 0.9,
       betaOverride: null, spread: rating.spread, rating: rating.rating, coverage: rating.coverage,
+      // Kept so the rating is re-derived whenever price or shares change (the
+      // large/small-firm table depends on market cap), until the user types
+      // their own spread.
+      autoSpread: true, ratingEbit: latest.ebit, ratingInterest: latest.interest,
+      ratingTables: { largeFirmCutoff: market.largeFirmCutoff, ratingsLarge: market.ratingsLarge, ratingsSmall: market.ratingsSmall },
       costOfDebtOverride: null, targetDebtWeight: null,
       // Equity bridge (latest balance sheet) and per-share inputs
       price, shares, debt,
@@ -255,10 +265,17 @@
     return { assumptions: a, why, history: h };
   }
 
+  /** The synthetic rating for the current inputs (re-derived live while the
+   *  spread is on automatic). */
+  function currentRating(a) {
+    if (!a.autoSpread || !a.ratingTables) return { rating: a.rating, spread: a.spread, coverage: a.coverage };
+    return syntheticRating(a.ratingEbit, a.ratingInterest, (a.price || 0) * (a.shares || 0), a.ratingTables, a.debt);
+  }
+
   function cocInputs(a, latest) {
     return {
       riskFree: a.riskFree, erp: a.erp, unleveredBeta: a.unleveredBeta, betaOverride: a.betaOverride,
-      marginalTax: a.marginalTax, spread: a.spread, costOfDebtOverride: a.costOfDebtOverride,
+      marginalTax: a.marginalTax, spread: currentRating(a).spread, costOfDebtOverride: a.costOfDebtOverride,
       marketCap: (a.price || 0) * (a.shares || 0), debt: a.debt, targetDebtWeight: a.targetDebtWeight,
       ebitPositive: latest ? !(isNum(latest.ebit) && latest.ebit <= 0) : true,
     };
@@ -448,5 +465,5 @@
   function pct(x, dp = 1) { return isNum(x) ? (x * 100).toFixed(dp) + '%' : 'n/a'; }
 
   return { PROJECTION_YEARS, historicalMetrics, costOfCapital, syntheticRating, defaultAssumptions,
-    project, value, sensitivity, cocInputs, _util: { median, mean, clamp, lerp, cashLike } };
+    project, value, sensitivity, cocInputs, currentRating, _util: { median, mean, clamp, lerp, cashLike } };
 });

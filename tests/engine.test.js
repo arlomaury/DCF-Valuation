@@ -200,3 +200,12 @@ test('debt with no reported interest is not rated AAA', () => {
   assert.equal(DCF.syntheticRating(100, null, 10e9, market, 3e9).rating, 'BBB');
   assert.equal(DCF.syntheticRating(100, null, 10e9, market, 0).rating, 'AAA');
 });
+
+test('synthetic rating follows a price typed in later (large vs small firm table)', () => {
+  const tables = { largeFirmCutoff: 5e9, ratingsLarge: [[8.5, 'AAA', 0.004], [6.5, 'AA', 0.0055], [-1e9, 'D', 0.19]],
+    ratingsSmall: [[12.5, 'AAA', 0.004], [9.5, 'AA', 0.0055], [-1e9, 'D', 0.19]] };
+  const a = { autoSpread: true, ratingEbit: 100, ratingInterest: 10, ratingTables: tables, debt: 50, shares: 1e8, price: 0 };
+  assert.equal(DCF.currentRating(a).rating, 'AA');                       // no price -> small-firm table
+  assert.equal(DCF.currentRating({ ...a, price: 100 }).rating, 'AAA');  // $10B cap -> large-firm table
+  assert.equal(DCF.currentRating({ ...a, autoSpread: false, spread: 0.02, rating: 'x' }).spread, 0.02);
+});

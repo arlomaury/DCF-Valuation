@@ -74,7 +74,7 @@ The valuation page flags problems as they come up: a terminal value above 85% of
 
 ```bash
 python3 -m pytest tests/        # SEC parsing, debt, shares, ratings, industry mapping
-node --test tests/engine.test.js # valuation math checked against hand-computed values
+node --test tests/*.test.js     # valuation math (hand-computed) + randomised stress test
 ```
 
 ## Project layout

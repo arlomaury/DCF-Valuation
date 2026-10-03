@@ -329,6 +329,7 @@ function AssumptionsPage({ a, set, why, reset, years }) {
 
 function RatePage({ a, set, why, v, data, mode }) {
   const c = v?.coc;
+  const rating = E.currentRating(a);
   const rf = data.market.riskFree;
   const pickIndustry = (name) => {
     const ind = data.market.industries.find((x) => x.name === name);
@@ -368,12 +369,16 @@ function RatePage({ a, set, why, v, data, mode }) {
       <Card title="Cost of debt and weights">
         <div className="grid sm:grid-cols-3 gap-4">
           <div>
-            <Stat label="Synthetic rating" value={a.rating} sub={isNum(a.coverage) ? `interest coverage ${a.coverage.toFixed(1)}×` : 'no interest expense'} tone="slate" />
-            <Why>{why.costOfDebt}</Why>
+            <Stat label="Synthetic rating" value={a.autoSpread ? rating.rating : 'manual'} sub={isNum(rating.coverage) ? `interest coverage ${rating.coverage.toFixed(1)}×` : (rating.assumed ? 'no interest expense found' : 'no interest expense')} tone="slate" />
+            <Why>{a.autoSpread ? why.costOfDebt : 'Spread entered by hand.'}</Why>
           </div>
-          <NumInput label="Default spread" value={a.spread} onChange={(v) => set({ spread: v })} hint="Damodaran's spread for that rating." />
+          <div>
+            <NumInput label="Default spread" value={rating.spread} onChange={(v) => set({ spread: v, autoSpread: false })}
+              hint={a.autoSpread ? `Damodaran's spread for ${rating.rating}, using the ${(a.price || 0) * (a.shares || 0) >= 5e9 ? 'large' : 'small'}-firm table.` : 'Your spread.'} />
+            {!a.autoSpread && <button onClick={() => set({ autoSpread: true })} className="text-[11px] text-blue-300 mt-1">Use the synthetic rating again</button>}
+          </div>
           <NumInput label="Pre-tax cost of debt override (optional)" optional value={a.costOfDebtOverride} onChange={(v) => set({ costOfDebtOverride: isNum(v) && v > 0 ? v : null })}
-            hint={`Default: risk-free + spread = ${pct(a.riskFree + a.spread, 2)}.`} />
+            hint={`Default: risk-free + spread = ${pct(a.riskFree + rating.spread, 2)}.`} />
         </div>
         <div className="grid sm:grid-cols-3 gap-4 mt-4">
           <NumInput label="Marginal tax rate (debt shield)" value={a.marginalTax} onChange={(v) => set({ marginalTax: v })}
