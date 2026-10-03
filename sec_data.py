@@ -379,14 +379,22 @@ def parse_company_facts(raw):
                     for y in yrs}
             series["dna"] = {"values": vals, "tags": {y: "Depreciation+AmortizationOfIntangibleAssets" for y in yrs}}
 
-    # EBIT fallback: pre-tax income + interest expense, marked as derived.
+    # EBIT fallback: pre-tax income + interest expense, marked as derived. Per
+    # year, not only when the tag is absent altogether: some companies stop
+    # reporting an operating-income subtotal (Johnson & Johnson), which left
+    # the latest years blank while older ones had it.
     derived = []
-    if not series.get("operatingIncome") and series.get("preTaxIncome"):
+    if series.get("preTaxIncome"):
         pti = series["preTaxIncome"]["values"]
         ie = (series.get("interestExpense") or {}).get("values", {})
-        series["operatingIncome"] = {"values": {y: v + (ie.get(y) or 0) for y, v in pti.items()},
-                                     "tags": {y: "derived: pre-tax income + interest" for y in pti}}
-        derived.append("operatingIncome")
+        ebit = series.get("operatingIncome") or {"values": {}, "tags": {}}
+        gaps = [y for y in pti if y not in ebit["values"]]
+        if gaps:
+            for y in gaps:
+                ebit["values"][y] = pti[y] + (ie.get(y) or 0)
+                ebit["tags"][y] = "derived: pre-tax income + interest"
+            series["operatingIncome"] = ebit
+            derived.append("operatingIncome")
 
     # Years: anchored on revenue (fall back to EBIT / net income).
     anchor = next((series[k] for k in ("revenue", "operatingIncome", "netIncome") if series.get(k)), None)

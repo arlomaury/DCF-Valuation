@@ -219,3 +219,18 @@ def test_interest_falls_back_to_cash_interest_paid():
     assert sd.extract_annual(facts, "interestExpense")["values"] == {2024: 2737e6}
     add(facts, "InterestExpense", "USD", [_dur(2900e6, "2024-12-31", "2025-02-14")])
     assert sd.extract_annual(facts, "interestExpense")["values"] == {2024: 2900e6}   # expense preferred
+
+
+def test_ebit_derived_for_years_without_an_operating_income_subtotal():
+    facts = {}
+    for y in range(2020, 2026):
+        end, filed = f"{y}-12-31", f"{y + 1}-02-15"
+        add(facts, "Revenues", "USD", [_dur(1000, end, filed)])
+        add(facts, "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+            "USD", [_dur(150, end, filed)])
+        add(facts, "InterestExpense", "USD", [_dur(10, end, filed)])
+        if y <= 2022:                                   # stopped reporting the subtotal
+            add(facts, "OperatingIncomeLoss", "USD", [_dur(170, end, filed)])
+    p = sd.parse_company_facts({"facts": facts})
+    assert p["aligned"]["operatingIncome"] == [160, 160, 160, 170, 170, 170]
+    assert "operatingIncome" in p["derived"]
