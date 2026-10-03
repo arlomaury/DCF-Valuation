@@ -211,3 +211,11 @@ def test_subsequent_event_balance_does_not_replace_year_end():
                                                  _inst(900, "2025-08-15", "2025-08-20")])
     p = sd.parse_company_facts({"facts": facts})
     assert p["aligned"]["totalDebt"][0] == 500
+
+
+def test_interest_falls_back_to_cash_interest_paid():
+    facts = {}
+    add(facts, "InterestPaidNet", "USD", [_dur(2737e6, "2024-12-31", "2025-02-14")])
+    assert sd.extract_annual(facts, "interestExpense")["values"] == {2024: 2737e6}
+    add(facts, "InterestExpense", "USD", [_dur(2900e6, "2024-12-31", "2025-02-14")])
+    assert sd.extract_annual(facts, "interestExpense")["values"] == {2024: 2900e6}   # expense preferred

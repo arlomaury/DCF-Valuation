@@ -235,3 +235,12 @@ test('capex fade is on by default', () => {
     quote: { price: 10 }, shares: { value: 100 } };
   assert.strictEqual(DCF.defaultAssumptions(data).assumptions.capexFade, true);
 });
+
+test('missing capex is said plainly, not described as a 3-year average', () => {
+  const fin = simpleFin(); delete fin.aligned.capex;
+  const data = { financials: fin, market: { riskFree: { rate: 0.04 }, erp: 0.05, marginalTaxRate: 0.25, industries: [] },
+    quote: { price: 10 }, shares: { value: 100 } };
+  const { assumptions, why } = DCF.defaultAssumptions(data);
+  assert.strictEqual(assumptions.capexPct, assumptions.daPct);
+  assert.match(why.capexPct, /not found/);
+});

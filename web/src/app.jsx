@@ -202,6 +202,13 @@ function CompanyPage({ onLoad, loading, error, data, a, set, mode, setMode }) {
               data.shares?.needsCheck && 'The share count on the filing cover page did not match the other share counts. Check diluted shares against the latest 10-Q before relying on the per-share value.',
               lb?.staleNote,
               !(a.price > 0) && 'No share price was found. Enter it above - it sets the market-value weights in the WACC.',
+              // A market cap below 0.5% of revenue is not a real company price; it is
+              // almost always a share count for one class only (Berkshire's Class A).
+              a.price > 0 && a.shares > 0 && (data.financials.aligned.revenue || [])[0] > 0
+                && a.price * a.shares < 0.005 * data.financials.aligned.revenue[0]
+                && `The share count gives a market cap of ${money(a.price * a.shares)}, implausibly small next to revenue of ${money(data.financials.aligned.revenue[0])}. The filing may list only one share class, or count shares in a different class from the quoted price. Check diluted shares against the latest 10-Q.`,
+              !(data.financials.aligned.capex || []).some((x) => x != null)
+                && 'Capital spending was not found in the filings (some companies tag it with their own labels), so capex is set equal to D&A. Check the cash-flow statement and enter the real figure on the Assumptions page.',
             ].filter(Boolean)} /></div>
           </Card>
           <Card title="Method">

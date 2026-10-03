@@ -198,7 +198,9 @@
     const nwcPct0 = median(h.slice(0, 3).map((r) => r.nwcPct));
     const nwcPct = isNum(nwcPct0) ? clamp(nwcPct0, -0.3, 0.4) : 0.05;
     why.daPct = `Latest year's D&A / revenue.`;
-    why.capexPct = `Average of the last 3 years' capex / revenue (including assets bought with finance leases).`;
+    why.capexPct = isNum(capexPct)
+      ? `Average of the last 3 years' capex / revenue (including assets bought with finance leases).`
+      : `Capital spending was not found in the filings, so it is set equal to D&A (${pct(daPct)}). Check the cash-flow statement and enter the real figure.`;
     why.capexFade = `Capex moves from today's level to the steady state the terminal value assumes by year ${n}: D&A plus the reinvestment needed to grow at the terminal rate (g ÷ RONIC of NOPAT).`;
     why.nwcPct = `Median working capital / revenue over 3 years (${pct(nwcPct)}); working capital grows with revenue.`;
 

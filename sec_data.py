@@ -49,8 +49,12 @@ CONCEPTS = {
               "CostOfServices"], "first", "duration"),
     "grossProfit": (["GrossProfit"], "first", "duration"),
     "operatingIncome": (["OperatingIncomeLoss"], "first", "duration"),
+    # InterestPaidNet (cash interest paid) is the last resort: some large
+    # filers (NextEra, for one) tag their income-statement interest with their
+    # own labels, and without any figure the credit rating has to be assumed.
     "interestExpense": (["InterestExpense", "InterestExpenseNonoperating",
-                         "InterestExpenseDebt", "InterestAndDebtExpense"],
+                         "InterestExpenseDebt", "InterestAndDebtExpense",
+                         "InterestPaidNet"],
                         "first", "duration"),
     "preTaxIncome": (["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
                       "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"],
