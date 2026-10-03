@@ -188,6 +188,11 @@ function CompanyPage({ onLoad, loading, error, data, a, set, mode, setMode }) {
               <Stat label="Market cap" value={money(a.price * a.shares)} tone="slate" />
             </div>
             <p className="text-[11px] text-slate-500 mt-3">Balance sheet for the equity bridge: {lb?.date ? `latest filing dated ${lb.date}` : 'latest 10-K'}. Financial statements: SEC EDGAR XBRL.</p>
+            <div className="mt-2"><Warnings items={[
+              data.shares?.needsCheck && 'The share count on the filing cover page did not match the other share counts. Check diluted shares against the latest 10-Q before relying on the per-share value.',
+              lb?.staleNote,
+              !(data.quote?.price > 0) && 'No share price was found. Enter it above - it sets the market-value weights in the WACC.',
+            ].filter(Boolean)} /></div>
           </Card>
           <Card title="Method">
             <Toggle value={mode} onChange={setMode} options={[['unlevered', 'Free cash flow to the firm, at WACC'], ['levered', 'Free cash flow to equity, at cost of equity']]} />

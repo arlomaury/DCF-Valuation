@@ -77,6 +77,7 @@ CONCEPTS = {
     "sbc": (["ShareBasedCompensation", "AllocatedShareBasedCompensationExpense"],
             "first", "duration"),
     "dilutedShares": (["WeightedAverageNumberOfDilutedSharesOutstanding"], "first", "duration"),
+    "_bsShares": (["CommonStockSharesOutstanding"], "first", "instant"),
     "basicShares": (["WeightedAverageNumberOfSharesOutstandingBasic"], "first", "duration"),
     # Balance sheet
     "totalAssets": (["Assets"], "first", "instant"),
@@ -107,7 +108,7 @@ CONCEPTS = {
     "preferredStock": (["PreferredStockValue"], "first", "instant"),
 }
 
-BALANCE_KEYS = ["cash", "shortTermInvestments", "cashAndSTI", "longTermInvestments",
+BALANCE_KEYS = ["_bsShares", "cash", "shortTermInvestments", "cashAndSTI", "longTermInvestments",
                 "minorityInterest", "preferredStock", "operatingLeaseLiability",
                 "currentAssets", "currentLiabilities", "totalAssets",
                 "_debtCurrent", "_ltDebtCurrent", "_shortBorrowings", "_ltDebtNoncurrent",
@@ -195,6 +196,10 @@ def extract_annual(facts, key):
         return None
     values, used = {}, {}
     for yr, cands in per_year.items():
+        if key == "revenue" and any(t == "RevenueFromContractWithCustomerExcludingAssessedTax" for _p, t, _v in cands):
+            # Excise / sales taxes collected for the government are not the
+            # company's revenue; never let the tax-inclusive figure win on size.
+            cands = [c for c in cands if c[1] != "RevenueFromContractWithCustomerIncludingAssessedTax"]
         if combine == "max":
             prio, tag, val = max(cands, key=lambda c: (c[2], -c[0]))
         else:
@@ -263,12 +268,19 @@ def _sum_present(*vals):
     return sum(present) if present else None
 
 
-def compose_debt(get):
-    """Total debt from components.  `get(key)` returns a number or None.
-    Returns (total, parts) where parts explains what was used."""
+def compose_debt(get, date_of=None):
+    """Total debt from components.  `get(key)` returns a number or None;
+    `date_of(key)` (optional) returns the date that value is from.
+    Returns (total, parts, current_debt)."""
     parts = {}
     # Current: one total tag if reported, else current LTD + short-term borrowings.
     cur = get("_debtCurrent")
+    if cur is not None and date_of:
+        # A stale total (e.g. only in the last 10-K) must not override fresher
+        # components reported in the latest 10-Q.
+        newer = [date_of(k) for k in ("_ltDebtCurrent", "_shortBorrowings") if get(k) is not None]
+        if newer and max(newer) > (date_of("_debtCurrent") or ""):
+            cur = None
     if cur is not None:
         parts["Current debt"] = cur
     else:
@@ -302,7 +314,10 @@ def compose_debt(get):
         if fl:
             parts["Finance lease liabilities"] = fl
     total = _sum_present(cur, nonc, fl)
-    return (total or 0), parts, (cur or 0)
+    # Current debt for working-capital purposes also includes the current
+    # part of finance leases (it sits in current liabilities too).
+    cur_all = (cur or 0) + ((get("_financeLeaseCurrent") or 0) if not leases_inside else 0)
+    return (total or 0), parts, cur_all
 
 
 def parse_company_facts(raw):
@@ -361,15 +376,21 @@ def parse_company_facts(raw):
     bs_date = latest_balance_date(facts)
     latest = {"date": bs_date, "values": {}, "sources": {}}
     if bs_date:
+        dates = {}
         for key in BALANCE_KEYS:
             v = extract_latest_instant(facts, key, as_of=bs_date)
             if v:
                 latest["values"][key] = v["value"]
                 latest["sources"][key] = f'{v["tag"]} ({v["date"]})'
-        total_debt, parts, _cur = compose_debt(lambda k: latest["values"].get(k))
+                dates[key] = v["date"]
+        total_debt, parts, _cur = compose_debt(lambda k: latest["values"].get(k), dates.get)
+        stale = sorted({d for k, d in dates.items() if d != bs_date and (k.startswith("_") or k in ("cash", "shortTermInvestments"))})
+        if stale:
+            latest["staleNote"] = ("Some balance-sheet items were not in the latest filing and come from "
+                                   f"an earlier one ({', '.join(stale)}).")
         latest["values"]["totalDebt"] = total_debt
         latest["debtParts"] = parts
-        for k in [k for k in latest["values"] if k.startswith("_")]:
+        for k in [k for k in latest["values"] if k.startswith("_") and k != "_bsShares"]:
             latest["values"].pop(k)
 
     shares = shares_outstanding(facts)
@@ -386,34 +407,43 @@ def parse_company_facts(raw):
 def choose_share_count(parsed):
     """Pick the share count used for per-share value, with an explanation.
 
-    Cover-page shares are the most current count, so they are the base. They
-    are cross-checked against the latest weighted-average basic count: a big
-    mismatch usually means classes with different economics (one class worth
-    many of another) and the weighted count is safer.  A dilution factor from
-    diluted vs basic weighted shares accounts for options and RSUs."""
+    Cover-page shares are the most current count, so they are the base when
+    they agree (within 20%) with an independent count: weighted-average basic
+    shares, or common shares outstanding on the balance sheet.  A mismatch
+    usually means share classes - one class missing from the cover page, or
+    classes with different economics - so an independent count is used and
+    the result is flagged for the user to check.  A dilution factor (diluted
+    / basic weighted shares) accounts for options and RSUs."""
     a = parsed["aligned"]
     basic = next((v for v in a.get("basicShares", []) if v), None)
     diluted = next((v for v in a.get("dilutedShares", []) if v), None)
-    cover = (parsed.get("shares") or {}).get("value")
-    if cover and basic and 0.8 <= cover / basic <= 1.2:
-        base, note = cover, ["cover-page shares outstanding"]
-    elif cover and basic:
-        base, note = basic, ["weighted-average basic shares (the cover-page count looked "
-                             "inconsistent, e.g. share classes with different economics)"]
-    elif cover:
-        base, note = cover, ["cover-page shares outstanding"]
-    elif basic:
-        base, note = basic, ["weighted-average basic shares"]
+    bs = (parsed.get("latestBalance") or {}).get("values", {}).get("_bsShares")
+    cover_info = parsed.get("shares") or {}
+    cover = cover_info.get("value")
+    refs = [r for r in (basic, bs) if r]
+    agrees = lambda x: any(0.8 <= x / r <= 1.2 for r in refs)  # noqa: E731
+    needs_check = False
+    if cover and (not refs or agrees(cover)):
+        base, note = cover, ["cover-page shares outstanding"
+                             + (f" ({cover_info.get('classes')} share classes summed)" if cover_info.get("classes", 1) > 1 else "")]
+    elif refs:
+        base = basic or bs
+        note = ["weighted-average basic shares" if basic else "balance-sheet shares outstanding"]
+        needs_check = bool(cover)
+        if cover:
+            note.append("(the cover-page count did not match - please check, e.g. multiple share classes)")
     elif diluted:
-        return {"value": diluted, "dilutionFactor": 1.0, "basis": "weighted-average diluted shares"}
+        return {"value": diluted, "dilutionFactor": 1.0, "basis": "weighted-average diluted shares",
+                "needsCheck": False}
     else:
         return None
     factor = 1.0
     if basic and diluted and diluted >= basic:
         factor = min(diluted / basic, 1.10)
     if factor > 1.0:
-        note.append(f"× {factor:.3f} dilution (diluted / basic weighted shares)")
-    return {"value": base * factor, "dilutionFactor": factor, "basis": " ".join(note)}
+        note.append(f"× {factor:.3f} dilution (diluted ÷ basic weighted shares)")
+    return {"value": base * factor, "dilutionFactor": factor, "basis": " ".join(note),
+            "needsCheck": needs_check}
 
 
 def load_json(path):

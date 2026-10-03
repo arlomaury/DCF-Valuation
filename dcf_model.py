@@ -45,7 +45,7 @@ import sec_data
 APP_VERSION = "2.0"
 PORT_START = 8787
 HERE = Path(__file__).resolve().parent
-WEB_DIR = HERE / "web"
+WEB_DIR = (HERE / "web").resolve()
 CACHE_DIR = Path(os.environ.get("DCF_CACHE_DIR", Path.home() / ".dcf_model_cache"))
 CONFIG_FILE = CACHE_DIR / "config.json"
 LOCAL_NAMES = {"127.0.0.1", "localhost", "::1"}
@@ -496,8 +496,11 @@ class Handler(BaseHTTPRequestHandler):
     def _static(self, path):
         name = "index.html" if path in ("/", "/index.html") else path.lstrip("/")
         f = (WEB_DIR / name).resolve()
-        if WEB_DIR not in f.parents or not f.is_file() or "/src/" in str(f).replace("\\", "/"):
+        if WEB_DIR not in f.parents or not f.is_file():
             return self._json({"error": "not found"}, 404)
+        rel = f.relative_to(WEB_DIR).parts
+        if rel[0] == "src" or any(part.startswith(".") for part in rel):
+            return self._json({"error": "not found"}, 404)     # UI source and dotfiles are not served
         ctype = CONTENT_TYPES.get(f.suffix)
         if not ctype:
             return self._json({"error": "not found"}, 404)

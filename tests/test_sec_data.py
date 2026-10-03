@@ -158,3 +158,38 @@ def test_synthetic_rating():
     assert md.synthetic_rating(100, 40, 10e9)[0] == "BBB"               # 2.5x is the BBB floor
     assert md.synthetic_rating(100, 0, 10e9)[0] == "AAA"
     assert md.synthetic_rating(-5, 10, 10e9)[0] == "D"
+
+
+def test_excise_taxes_are_not_revenue():
+    facts = {}
+    add(facts, "RevenueFromContractWithCustomerIncludingAssessedTax", "USD", [_dur(125, "2022-12-31", "2023-02-01")])
+    add(facts, "RevenueFromContractWithCustomerExcludingAssessedTax", "USD", [_dur(100, "2022-12-31", "2023-02-01")])
+    assert sd.extract_annual(facts, "revenue")["values"][2022] == 100
+
+
+def test_stale_current_debt_total_does_not_override_fresh_components():
+    vals = {"_debtCurrent": 500, "_ltDebtCurrent": 80, "_shortBorrowings": 20, "_ltDebtNoncurrent": 1000}
+    dates = {"_debtCurrent": "2025-12-31", "_ltDebtCurrent": "2026-06-30", "_shortBorrowings": "2026-06-30",
+             "_ltDebtNoncurrent": "2026-06-30"}
+    total, _parts, cur = sd.compose_debt(vals.get, dates.get)
+    assert (total, cur) == (1100, 100)
+
+
+def test_current_finance_lease_counts_as_current_debt_for_working_capital():
+    vals = {"_ltDebtCurrent": 50, "_ltDebtNoncurrent": 500, "_financeLeaseCurrent": 5, "_financeLeaseNoncurrent": 40}
+    total, _parts, cur = sd.compose_debt(vals.get)
+    assert total == 595 and cur == 55
+
+
+def test_share_count_flags_a_missing_share_class():
+    parsed = {"aligned": {"basicShares": [12.2e9], "dilutedShares": [12.3e9]},
+              "shares": {"value": 5.8e9, "classes": 1}}       # only class A on the cover
+    s = sd.choose_share_count(parsed)
+    assert s["needsCheck"] and s["value"] == pytest.approx(12.3e9)
+
+
+def test_share_count_uses_balance_sheet_when_weighted_missing():
+    parsed = {"aligned": {}, "latestBalance": {"values": {"_bsShares": 1.0e9}},
+              "shares": {"value": 1.01e9, "classes": 1}}
+    s = sd.choose_share_count(parsed)
+    assert not s["needsCheck"] and s["value"] == pytest.approx(1.01e9)

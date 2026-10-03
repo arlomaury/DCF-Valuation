@@ -188,3 +188,15 @@ test('implied exit multiple reproduces the perpetuity value, and implied growth 
   close(e.pvTV, g.pvTV, 1e-9);
   close(e.impliedGrowthFromExit, a.terminalGrowth, 1e-6);
 });
+
+test('missing share price falls back to all-equity weights instead of 100% debt', () => {
+  const c = DCF.costOfCapital({ riskFree: 0.04, erp: 0.05, unleveredBeta: 1, marginalTax: 0.25, spread: 0.01, marketCap: 0, debt: 500 });
+  assert.equal(c.wD, 0);
+  close(c.wacc, c.ke);
+});
+
+test('debt with no reported interest is not rated AAA', () => {
+  const market = { largeFirmCutoff: 5e9, ratingsLarge: [[8.5, 'AAA', 0.004], [-1e9, 'D', 0.19]], ratingsSmall: [[-1e9, 'D', 0.19]] };
+  assert.equal(DCF.syntheticRating(100, null, 10e9, market, 3e9).rating, 'BBB');
+  assert.equal(DCF.syntheticRating(100, null, 10e9, market, 0).rating, 'AAA');
+});

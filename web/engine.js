@@ -95,8 +95,16 @@
   }
 
   // ─── Cost of capital ────────────────────────────────────────────────────
-  function syntheticRating(ebit, interest, marketCap, market) {
-    if (!isNum(interest) || interest <= 0) return { rating: 'AAA', spread: 0.004, coverage: null };
+  function syntheticRating(ebit, interest, marketCap, market, debt) {
+    if (!isNum(interest) || interest <= 0) {
+      // No interest reported.  With little or no debt that means AAA; with
+      // real debt it means the tag is missing, so assume investment grade (BBB)
+      // rather than flattering the company.
+      if (isNum(debt) && debt > 0 && (!isNum(marketCap) || debt > 0.05 * marketCap)) {
+        return { rating: 'BBB', spread: 0.0111, coverage: null, assumed: true };
+      }
+      return { rating: 'AAA', spread: 0.004, coverage: null };
+    }
     const coverage = (isNum(ebit) ? ebit : 0) / interest;
     const table = (marketCap || 0) >= market.largeFirmCutoff ? market.ratingsLarge : market.ratingsSmall;
     for (const [lower, rating, spread] of table) if (coverage >= lower) return { rating, spread, coverage };
@@ -113,8 +121,10 @@
   function costOfCapital(inp) {
     const E = Math.max(0, inp.marketCap || 0);
     const D = Math.max(0, inp.debt || 0);
+    // Without a market value of equity the market weights are meaningless, so
+    // fall back to an all-equity structure (the UI warns about the missing price).
     let wD = isNum(inp.targetDebtWeight) ? clamp(inp.targetDebtWeight, 0, 0.9)
-      : (E + D > 0 ? D / (E + D) : 0);
+      : (E > 0 ? D / (E + D) : 0);
     const wE = 1 - wD;
     const de = wE > 0 ? wD / wE : 0;
     const taxShield = inp.ebitPositive === false ? 0 : inp.marginalTax;
@@ -192,7 +202,7 @@
     const shares = data.shares ? data.shares.value : 0;
     const marketCap = price * shares;
     const debt = lb.totalDebt != null ? lb.totalDebt : (fin.aligned.totalDebt || [0])[0] || 0;
-    const rating = syntheticRating(latest.ebit, latest.interest, marketCap, market);
+    const rating = syntheticRating(latest.ebit, latest.interest, marketCap, market, debt);
 
     const a = {
       years: n,
@@ -219,7 +229,7 @@
     why.terminalGrowth = `At most 2.5% and never above the risk-free rate (${pct(rf)}): no company can outgrow the economy forever.`;
     why.beta = `${industry.name || 'Market'} unlevered beta (${(a.unleveredBeta).toFixed(2)}, Damodaran ${market.dataDate}), re-levered at this company's market debt/equity.`;
     why.costOfDebt = rating.coverage == null
-      ? 'No interest expense reported, so rated AAA.'
+      ? (rating.assumed ? 'The company has debt but no interest expense was found in its filings, so an investment-grade BBB rating is assumed - check it.' : 'No interest expense and little or no debt, so rated AAA.')
       : `Interest coverage ${rating.coverage.toFixed(1)}× → synthetic rating ${rating.rating}, spread ${pct(rating.spread)} over the risk-free rate.`;
 
     // Return on new investment in the terminal period: half-way between this
