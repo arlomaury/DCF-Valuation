@@ -251,3 +251,77 @@ test('capex fade: with no RONIC it falls back to the same rate as the terminal v
   const last = v.proj[v.proj.length - 1];
   close(last.capex - last.da + last.dNwc, (0.02 / v.coc.ke) * last.nopat, 1e-9);
 });
+
+// ─── Loss carryforwards ────────────────────────────────────────────────────
+test('tax losses: a loss year builds a carryforward that shelters up to 80% of later profit', () => {
+  // Margins: -10%, then +20%. Revenue 1050 then 1102.5.
+  const a = simpleAssumptions({ ebitMargin: [-0.1, 0.2, 0.2, 0.2, 0.2] });
+  const rows = DCF.project(simpleFin(), a, 'unlevered');
+  close(rows[0].taxes, 0);
+  close(rows[0].nolEnd, 105);                       // the year-1 loss
+  const ebit2 = 1102.5 * 0.2;                       // 220.5
+  const used = Math.min(105, 0.8 * ebit2);          // 105 (all of it)
+  close(rows[1].nolUsed, used);
+  close(rows[1].taxes, (ebit2 - used) * 0.25);
+  close(rows[2].nolUsed, 0);
+  close(rows[2].taxes, rows[2].ebit * 0.25);
+});
+
+test('tax losses: the 80% limit leaves some income taxed every profitable year', () => {
+  const a = simpleAssumptions({ startingNol: 1e6 });
+  const rows = DCF.project(simpleFin(), a, 'unlevered');
+  for (const r of rows) {
+    close(r.nolUsed, 0.8 * r.ebit);
+    close(r.taxes, 0.2 * r.ebit * 0.25);
+  }
+});
+
+test('tax losses: FCFE shelters income after interest, not operating income', () => {
+  const a = simpleAssumptions({ debt: 2000, startingNol: 50 });
+  const rows = DCF.project(simpleFin(), a, 'levered', DCF.costOfCapital(DCF.cocInputs(a, null)));
+  const r = rows[0];
+  const pretax = r.ebit - r.interest;
+  close(r.nolUsed, Math.min(50, 0.8 * pretax));
+  close(r.netIncome, pretax - (pretax - r.nolUsed) * 0.25);
+});
+
+test('tax losses: defaults count filed carryforwards only for a loss-making company', () => {
+  const market = { riskFree: { rate: 0.04 }, erp: 0.05, marginalTaxRate: 0.25, industries: [],
+    largeFirmCutoff: 5e9, ratingsLarge: [[-1e9, 'BBB', 0.01]], ratingsSmall: [[-1e9, 'BBB', 0.01]] };
+  const data = (ebit) => {
+    const fin = simpleFin();
+    fin.aligned.operatingIncome = [ebit, 180];
+    fin.aligned.nolDTA = [25, 20];
+    fin.latestBalance = { values: {} };
+    return { financials: fin, market, quote: { price: 10 }, shares: { value: 100 } };
+  };
+  close(DCF.defaultAssumptions(data(-50)).assumptions.startingNol, 100);   // 25 / 25%
+  close(DCF.defaultAssumptions(data(200)).assumptions.startingNol, 0);
+});
+
+// ─── Stable-period beta ────────────────────────────────────────────────────
+test('terminal rate: a high beta is capped at 1.2 for the terminal value only', () => {
+  const a = simpleAssumptions({ unleveredBeta: 1.6, terminalBetaCap: 1.2 });
+  const v = DCF.value(simpleFin(), a, 'unlevered');
+  close(v.discountRate, 0.04 + 1.6 * 0.05);
+  close(v.terminalRate, 0.04 + 1.2 * 0.05);
+  const last = v.proj[v.proj.length - 1];
+  const fcf11 = last.ebit * 1.02 * 0.75 * (1 - 0.02 / 0.10);
+  close(v.tvGordon, fcf11 / (0.10 - 0.02));
+  close(v.pvGordon, v.tvGordon / Math.pow(1.12, 5));          // discounted at today's rate
+  // No cap: the terminal rate is today's rate.
+  const v0 = DCF.value(simpleFin(), { ...a, terminalBetaCap: null }, 'unlevered');
+  close(v0.terminalRate, v0.discountRate);
+  assert.ok(v.perShare > v0.perShare);
+});
+
+test('terminal rate: a beta below the cap is left alone', () => {
+  const v = DCF.value(simpleFin(), simpleAssumptions({ unleveredBeta: 0.7, terminalBetaCap: 1.2 }), 'unlevered');
+  close(v.terminalRate, v.discountRate);
+});
+
+test('terminal rate: sensitivity shifts keep the same terminal spread', () => {
+  const a = simpleAssumptions({ unleveredBeta: 1.6, terminalBetaCap: 1.2 });
+  const v = DCF.value(simpleFin(), a, 'unlevered', 0.15);
+  close(v.terminalRate, 0.15 - 0.02);
+});

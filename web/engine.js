@@ -16,6 +16,12 @@
   'use strict';
 
   const PROJECTION_YEARS = 10;
+  // US federal rule for losses arising after 2017: carried forward without
+  // expiry, but they can offset at most 80% of a year's taxable income.
+  const NOL_OFFSET_LIMIT = 0.8;
+  // Damodaran's rule of thumb for the stable-growth period: a mature firm's
+  // beta should not exceed 1.2 (two-thirds of US firms sit in 0.8-1.2).
+  const STABLE_BETA_CAP = 1.2;
 
   const isNum = (x) => typeof x === 'number' && isFinite(x);
   const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
@@ -136,6 +142,16 @@
     return { wE, wD, de, leveredBeta, ke, kdPre, kdAfter, taxShield, wacc: wE * ke + wD * kdAfter };
   }
 
+  /** Cost of capital for the terminal (stable-growth) period: the same inputs,
+   *  but a high beta is brought down to the stable-period cap, because a firm
+   *  growing at the rate of the economy carries roughly market risk. An empty
+   *  cap keeps today's beta. A low beta is left alone. */
+  function terminalCostOfCapital(inp, cap) {
+    const now = costOfCapital(inp);
+    if (!isNum(cap) || cap <= 0 || now.leveredBeta <= cap) return { ...now, betaCapped: false };
+    return { ...costOfCapital({ ...inp, betaOverride: cap }), betaCapped: true };
+  }
+
   // ─── Default assumptions ────────────────────────────────────────────────
   /**
    * Starting assumptions from the company's own history plus market data.
@@ -193,6 +209,20 @@
     const tEff = isNum(tEff0) ? clamp(tEff0, 0, 0.4) : tMarg;
     why.taxRate = `Median effective rate of the last 3 profitable years (${pct(tEff)}), converging to the ${pct(tMarg)} marginal rate by year ${n}: low effective rates (credits, deferrals) rarely last forever.`;
 
+    // Existing tax losses. Only counted for a company that is losing money
+    // today: a profitable company's past effective rate already reflects the
+    // losses it is using up, so adding them again would count them twice. The
+    // filing reports the tax value of the losses (a deferred tax asset), so it
+    // is grossed up at the marginal rate to get the losses themselves.
+    const nolDta = fin.aligned && fin.aligned.nolDTA ? fin.aligned.nolDTA[0] : null;
+    const lossMaking = isNum(latest.ebit) && latest.ebit <= 0;
+    const startingNol = lossMaking && isNum(nolDta) && nolDta > 0 && tMarg > 0 ? nolDta / tMarg : 0;
+    why.startingNol = startingNol > 0
+      ? `The latest 10-K reports a ${money(nolDta)} deferred tax asset for loss carryforwards, about ${money(startingNol)} of losses at the ${pct(tMarg)} rate. They shelter future profits, up to 80% of each year's taxable income.`
+      : lossMaking
+        ? 'No loss carryforward was found in the filings. Losses projected from here on are still carried forward.'
+        : 'Not used for a profitable company: its past tax rate already reflects any losses it is using up. Losses projected from here on are still carried forward.';
+
     const daPct = isNum(latest.daPct) ? latest.daPct : (mean(h.map((r) => r.daPct)) || 0.03);
     const capexPct = mean(h.slice(0, 3).map((r) => r.capexPct));
     const nwcPct0 = median(h.slice(0, 3).map((r) => r.nwcPct));
@@ -219,7 +249,8 @@
       taxRate: Array.from({ length: n }, (_, i) => round(lerp(tEff, tMarg, n > 1 ? i / (n - 1) : 1))),
       daPct: round(daPct), capexPct: round(isNum(capexPct) ? capexPct : daPct), nwcPct: round(nwcPct),
       sbcPct: round(isNum(latest.sbcPct) ? latest.sbcPct : 0),
-      terminalGrowth: gT, terminalTax: tMarg,
+      terminalGrowth: gT, terminalTax: tMarg, startingNol: Math.round(startingNol),
+      terminalBetaCap: STABLE_BETA_CAP,
       ronic: null, terminalMethod: 'gordon', exitMultiple: null,
       midYear: true, addBackSBC: false, capexFade: true, includeLongTermInvestments: true,
       // Cost of capital inputs
@@ -245,9 +276,14 @@
       ? (rating.assumed ? 'The company has debt but no interest expense was found in its filings, so an investment-grade BBB rating is assumed - check it.' : 'No interest expense and little or no debt, so rated AAA.')
       : `Interest coverage ${rating.coverage.toFixed(1)}× → synthetic rating ${rating.rating}, spread ${pct(rating.spread)} over the risk-free rate.`;
 
+    why.terminalBetaCap = `In the terminal period the levered beta is capped at ${STABLE_BETA_CAP.toFixed(1)}: a company growing with the economy carries about market risk (Damodaran's stable-growth rule). A beta already below the cap is kept. Clear the box to keep today's beta forever.`;
+
     // Return on new investment in the terminal period: half-way between this
-    // company's ROIC and the cost of capital - competitive advantages fade.
-    const coc = costOfCapital(cocInputs({ ...a, ...overrides }, latest));
+    // company's ROIC and the terminal cost of capital - competitive advantages
+    // fade. Compared against the terminal rate, which is the rate the
+    // terminal value is discounted at.
+    const merged = { ...a, ...overrides };
+    const coc = terminalCostOfCapital(cocInputs(merged, latest), merged.terminalBetaCap);
     const roic = mean(h.slice(0, 3).map((r) => r.roic));
     if (isNum(roic) && roic > coc.wacc) {
       a.ronic = round(coc.wacc + 0.5 * (Math.min(roic, 0.4) - coc.wacc));
@@ -321,6 +357,7 @@
     let nwc = rev * a.nwcPct;               // normalised starting working capital
     let debt = a.debt || 0;
     const debtToRev = debt / base.revenue;
+    let nol = isNum(a.startingNol) && a.startingNol > 0 ? a.startingNol : 0;
     const capexPath = capexSchedule(a, n, isNum(rate) ? rate : (coc ? (mode === 'levered' ? coc.ke : coc.wacc) : null));
     const rows = [];
     for (let i = 0; i < n; i++) {
@@ -328,8 +365,14 @@
       const newRev = rev * (1 + g);
       const ebit = newRev * (a.ebitMargin[i] ?? 0);
       const t = a.taxRate[i] ?? a.marginalTax;
-      const taxes = Math.max(ebit, 0) * t;  // no tax credit assumed on losses
+      // FCFF taxes operating income as if unlevered; FCFE taxes income after
+      // interest. Either way a loss creates no refund (no carrybacks since
+      // 2018) but is carried forward to shelter later profits.
+      const nolBefore = nol;
+      const opTax = taxWithNol(ebit, t, nol);
+      const taxes = opTax.tax;
       const nopat = ebit - taxes;
+      if (mode !== 'levered') nol = opTax.nol;
       const da = newRev * a.daPct;
       const capex = newRev * capexPath[i];
       const newNwc = newRev * a.nwcPct;
@@ -337,14 +380,16 @@
       const sbc = a.addBackSBC ? newRev * (a.sbcPct || 0) : 0;
       const row = { year: (fin.years[0] || 0) + i + 1, t: i + 1, revenue: newRev, growth: g, ebit,
         ebitMargin: a.ebitMargin[i], taxRate: t, taxes, nopat, da, capex, dNwc,
-        ebitda: ebit + da, reinvestment: capex - da + dNwc };
+        ebitda: ebit + da, reinvestment: capex - da + dNwc, nolUsed: opTax.used, nolEnd: opTax.nol };
       if (mode === 'levered') {
         const newDebt = newRev * debtToRev;
         const interest = debt * coc.kdPre;
         const pretax = ebit - interest;
-        const netIncome = pretax - Math.max(pretax, 0) * t;
+        const eqTax = taxWithNol(pretax, t, nolBefore);
+        nol = eqTax.nol;
+        const netIncome = pretax - eqTax.tax;
         const netBorrowing = newDebt - debt;
-        Object.assign(row, { interest, netIncome, netBorrowing, debt: newDebt,
+        Object.assign(row, { interest, netIncome, netBorrowing, debt: newDebt, nolUsed: eqTax.used, nolEnd: eqTax.nol,
           fcf: netIncome + da - capex - dNwc + netBorrowing + sbc });
         debt = newDebt;
       } else {
@@ -365,9 +410,15 @@
    */
   function value(fin, a, mode = 'unlevered', discountOverride = null) {
     const h = historicalMetrics(fin);
-    const coc = costOfCapital(cocInputs(a, h[0]));
-    const r = isNum(discountOverride) ? discountOverride : (mode === 'levered' ? coc.ke : coc.wacc);
-    const proj = project(fin, a, mode, coc, r);
+    const inp = cocInputs(a, h[0]);
+    const coc = costOfCapital(inp);
+    const cocT = terminalCostOfCapital(inp, a.terminalBetaCap);
+    const pick = (c) => (mode === 'levered' ? c.ke : c.wacc);
+    const r = isNum(discountOverride) ? discountOverride : pick(coc);
+    // Terminal-period rate. The sensitivity tables shift the explicit-period
+    // rate; the terminal rate moves by the same amount.
+    const rT = r + (pick(cocT) - pick(coc));
+    const proj = project(fin, a, mode, coc, rT);
     if (!proj) return null;
     const n = proj.length;
     const last = proj[n - 1];
@@ -378,7 +429,7 @@
     // Terminal value, perpetuity growth with value-driver reinvestment:
     //   FCF(n+1) = NOPAT(n+1) × (1 − g / RONIC)
     // so growth is paid for by reinvestment instead of appearing for free.
-    const ronic = isNum(a.ronic) && a.ronic > 0 ? a.ronic : r;
+    const ronic = isNum(a.ronic) && a.ronic > 0 ? a.ronic : rT;
     const reinvestRate = clamp(g / ronic, 0, 1);
     const nopatNext = last.ebit * (1 + g) * (1 - tT);
     let fcfNext;
@@ -390,9 +441,9 @@
       fcfNext = nopatNext * (1 - reinvestRate);
     }
     let tvGordon = null;
-    if (r - g < 0.005) warnings.push(`Discount rate (${pct(r)}) must be clearly above terminal growth (${pct(g)}).`);
+    if (rT - g < 0.005) warnings.push(`Terminal discount rate (${pct(rT)}) must be clearly above terminal growth (${pct(g)}).`);
     else if (fcfNext <= 0) warnings.push('Terminal-year cash flow is negative, so the perpetuity value is not meaningful. Revisit the margin path.');
-    else tvGordon = fcfNext / (r - g);
+    else tvGordon = fcfNext / (rT - g);
 
     const ebitdaN = last.ebitda;
     let tvExit = null;
@@ -444,11 +495,11 @@
       const f = mode === 'levered'
         ? (last.ebit * (1 + gg) - last.debt * coc.kdPre) * (1 - tT) - rr * nopat + gg * last.debt
         : nopat * (1 - rr);
-      return f / (r - gg) * dfAt(a.midYear ? n - 0.5 : n);
+      return f / (rT - gg) * dfAt(a.midYear ? n - 0.5 : n);
     };
     let impliedGrowthFromExit = null;
     if (pvExit != null && pvExit > 0) {
-      let lo = -0.05, hi = r - 0.001;
+      let lo = -0.05, hi = rT - 0.001;
       if (gordonPV(lo) <= pvExit && gordonPV(hi) >= pvExit) {
         for (let k = 0; k < 80; k++) { const mid = (lo + hi) / 2; if (gordonPV(mid) < pvExit) lo = mid; else hi = mid; }
         impliedGrowthFromExit = (lo + hi) / 2;
@@ -457,12 +508,12 @@
 
     if (tvShare != null && tvShare > 0.85) warnings.push(`Terminal value is ${pct(tvShare)} of the total - the result depends mostly on the long-run assumptions.`);
     if (g > a.riskFree) warnings.push('Terminal growth is above the risk-free rate, which implies the company eventually outgrows the economy.');
-    if (isNum(a.ronic) && a.ronic < r - 0.0005 && g > 0) warnings.push('Return on new investment is below the cost of capital, so growth destroys value in the terminal period.');
+    if (isNum(a.ronic) && a.ronic < rT - 0.0005 && g > 0) warnings.push('Return on new investment is below the cost of capital, so growth destroys value in the terminal period.');
     if (!(a.shares > 0)) warnings.push('Shares outstanding are missing - enter them on the Company page.');
     if (!(a.price > 0)) warnings.push('No share price was found - enter it on the Company page so the market capital weights and upside can be computed.');
 
     return {
-      mode, discountRate: r, coc, proj: pvRows, sumPV,
+      mode, discountRate: r, terminalRate: rT, cocTerminal: cocT, coc, proj: pvRows, sumPV,
       tvGordon, tvExit, pvGordon, pvExit, pvTV, terminalMethod: method,
       fcfNext, nopatNext, reinvestRate, ronic,
       enterpriseValue: ev, equityValue: equity, perShare, upside,
@@ -494,7 +545,26 @@
   }
 
   function pct(x, dp = 1) { return isNum(x) ? (x * 100).toFixed(dp) + '%' : 'n/a'; }
+  function money(x) {
+    if (!isNum(x)) return 'n/a';
+    const ax = Math.abs(x);
+    if (ax >= 1e9) return `$${(x / 1e9).toFixed(1)}B`;
+    if (ax >= 1e6) return `$${(x / 1e6).toFixed(0)}M`;
+    return `$${Math.round(x).toLocaleString('en-US')}`;
+  }
 
-  return { PROJECTION_YEARS, historicalMetrics, costOfCapital, syntheticRating, defaultAssumptions,
-    project, value, sensitivity, cocInputs, currentRating, _util: { median, mean, clamp, lerp, cashLike } };
+  /** Tax for one year, using up loss carryforwards first. Returns the tax and
+   *  the carryforward left. A loss adds to the carryforward; a profit can be
+   *  sheltered up to NOL_OFFSET_LIMIT of itself. */
+  function taxWithNol(taxable, rate, nol) {
+    if (!isNum(taxable) || taxable <= 0) {
+      return { tax: 0, used: 0, nol: nol + (isNum(taxable) ? -taxable : 0) };
+    }
+    const used = Math.min(nol, NOL_OFFSET_LIMIT * taxable);
+    return { tax: (taxable - used) * rate, used, nol: nol - used };
+  }
+
+  return { PROJECTION_YEARS, NOL_OFFSET_LIMIT, STABLE_BETA_CAP, historicalMetrics, costOfCapital,
+    terminalCostOfCapital, syntheticRating, defaultAssumptions, project, value, sensitivity, cocInputs,
+    currentRating, _util: { median, mean, clamp, lerp, cashLike, taxWithNol } };
 });

@@ -306,6 +306,12 @@ function AssumptionsPage({ a, set, why, reset, years }) {
           <PathEditor label="Revenue growth" values={a.revenueGrowth} onChange={(v) => set({ revenueGrowth: v })} why={why.revenueGrowth} years={years} />
           <PathEditor label="Operating margin" values={a.ebitMargin} onChange={(v) => set({ ebitMargin: v })} why={why.ebitMargin} years={years} />
           <PathEditor label="Tax rate" values={a.taxRate} onChange={(v) => set({ taxRate: v })} why={why.taxRate} years={years} />
+          <div className="grid sm:grid-cols-3 gap-4">
+            <NumInput label="Tax loss carryforward today" kind="num" prefix="$" suffix="M" dp={0}
+              value={isNum(a.startingNol) ? a.startingNol / 1e6 : 0}
+              onChange={(v) => set({ startingNol: Math.max(0, v) * 1e6 })}
+              hint={why.startingNol} />
+          </div>
         </div>
       </Card>
       <Card title="Reinvestment">
@@ -326,6 +332,8 @@ function AssumptionsPage({ a, set, why, reset, years }) {
           <NumInput label="Terminal growth" value={a.terminalGrowth} onChange={(v) => set({ terminalGrowth: v })} hint={why.terminalGrowth} />
           <NumInput label="Return on new investment (RONIC)" value={a.ronic} onChange={(v) => set({ ronic: v })} hint={why.ronic} />
           <NumInput label="Terminal tax rate" value={a.terminalTax} onChange={(v) => set({ terminalTax: v })} hint="Marginal rate: the long-run tax a profitable US company pays." />
+          <NumInput label="Terminal beta cap (optional)" kind="num" suffix="" dp={2} optional value={a.terminalBetaCap}
+            onChange={(v) => set({ terminalBetaCap: isNum(v) && v > 0 ? v : null })} hint={why.terminalBetaCap} />
         </div>
         <div className="mt-4 grid sm:grid-cols-2 gap-4 items-start">
           <div>
@@ -362,7 +370,8 @@ function RatePage({ a, set, why, v, data, mode }) {
         <Stat label="Cost of equity" value={pct(c?.ke, 2)} sub={`Rf + β × ERP`} />
         <Stat label="After-tax cost of debt" value={pct(c?.kdAfter, 2)} sub={`(Rf + spread) × (1 − t)`} />
         <Stat label={mode === 'levered' ? 'Discount rate (cost of equity)' : 'WACC'} value={pct(v?.discountRate, 2)} tone="purple"
-          sub={`${pct(c?.wE)} equity · ${pct(c?.wD)} debt`} />
+          sub={`${pct(c?.wE)} equity · ${pct(c?.wD)} debt`
+            + (v && v.cocTerminal && v.cocTerminal.betaCapped ? ` · terminal ${pct(v.terminalRate, 2)} (β ${v.cocTerminal.leveredBeta.toFixed(2)})` : '')} />
       </div>
       <Card title="Cost of equity">
         <div className="grid sm:grid-cols-3 gap-4">
@@ -419,7 +428,9 @@ function CashFlowPage({ v, mode }) {
   const lev = mode === 'levered';
   const lines = [
     ['Revenue', 'revenue', money], ['Growth', 'growth', (x) => pct(x)], ['Operating income', 'ebit', money],
-    ['Operating margin', 'ebitMargin', (x) => pct(x)], ['− Taxes', 'taxes', money], ['= NOPAT', 'nopat', money],
+    ['Operating margin', 'ebitMargin', (x) => pct(x)],
+    ...(v.proj.some((p) => p.nolUsed > 0) ? [['Tax losses used', 'nolUsed', money]] : []),
+    ['− Taxes', 'taxes', money], ['= NOPAT', 'nopat', money],
     ...(lev ? [['− Interest', 'interest', money], ['Net income', 'netIncome', money]] : []),
     ['+ D&A', 'da', money], ['− Capex', 'capex', money], ['− Change in working capital', 'dNwc', money],
     ...(lev ? [['+ Net borrowing', 'netBorrowing', money]] : []),

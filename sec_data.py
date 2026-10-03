@@ -109,6 +109,10 @@ CONCEPTS = {
     "_financeLeaseCurrent": (["FinanceLeaseLiabilityCurrent"], "first", "instant"),
     "operatingLeaseLiability": (["OperatingLeaseLiability"], "first", "instant"),
     "minorityInterest": (["MinorityInterest"], "first", "instant"),
+    # Tax value of loss carryforwards, from the 10-K tax footnote (annual).
+    # Domestic first: foreign losses cannot shelter US profits.
+    "nolDTA": (["DeferredTaxAssetsOperatingLossCarryforwardsDomestic",
+                "DeferredTaxAssetsOperatingLossCarryforwards"], "first", "instant"),
     "preferredStock": (["PreferredStockValue"], "first", "instant"),
 }
 

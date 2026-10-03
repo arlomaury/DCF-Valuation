@@ -243,3 +243,21 @@ def test_gap_outside_the_shown_years_does_not_mark_ebit_derived():
             "USD", [_dur(50e6, f"{y}-12-31", f"{y + 1}-02-15")])
     p = sd.parse_company_facts({"facts": facts})
     assert "operatingIncome" not in p["derived"]
+
+
+def test_loss_carryforward_prefers_domestic_tag():
+    raw = demo_company()
+    from demo_data import _inst
+    facts = raw["facts"]
+    add(facts, "DeferredTaxAssetsOperatingLossCarryforwards", "USD", [_inst(90e6, "2025-12-31", "2026-02-15")])
+    add(facts, "DeferredTaxAssetsOperatingLossCarryforwardsDomestic", "USD", [_inst(60e6, "2025-12-31", "2026-02-15")])
+    p = sd.parse_company_facts(raw)
+    assert p["aligned"]["nolDTA"][0] == pytest.approx(60e6)
+
+
+def test_loss_carryforward_falls_back_to_total():
+    raw = demo_company()
+    from demo_data import _inst
+    add(raw["facts"], "DeferredTaxAssetsOperatingLossCarryforwards", "USD", [_inst(90e6, "2025-12-31", "2026-02-15")])
+    p = sd.parse_company_facts(raw)
+    assert p["aligned"]["nolDTA"][0] == pytest.approx(90e6)
