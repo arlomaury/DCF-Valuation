@@ -180,13 +180,19 @@ _SIC_RANGES = [
     (1400, 1499, "Metals & Mining"),
     (1520, 1531, "Homebuilding"),
     (1500, 1799, "Engineering/Construction"),
-    (2080, 2085, "Beverage (Alcoholic)"),
+    # 2080 is the generic "Beverages" code. Coca-Cola and PepsiCo file under
+    # it, so it maps to soft drinks; brewers (2082), wineries (2084) and
+    # distillers (2085) have their own codes. The industry can be changed in
+    # the app for the few alcohol companies that also use 2080.
+    (2080, 2080, "Beverage (Soft)"),
+    (2082, 2085, "Beverage (Alcoholic)"),
     (2086, 2087, "Beverage (Soft)"),
     (2000, 2099, "Food Processing"),
     (2100, 2199, "Tobacco"),
     (2200, 2399, "Apparel"),
     (2400, 2499, "Paper/Forest Products"),
     (2500, 2599, "Furn/Home Furnishings"),
+    (2670, 2670, "Diversified"),          # converted paper: 3M files here
     (2650, 2679, "Packaging & Container"),
     (2600, 2699, "Paper/Forest Products"),
     (2700, 2799, "Publishing & Newspapers"),
@@ -197,6 +203,7 @@ _SIC_RANGES = [
     (2850, 2899, "Chemical (Specialty)"),
     (2900, 2999, "Oil/Gas (Integrated)"),
     (3010, 3011, "Rubber & Tires"),
+    (3021, 3021, "Shoe"),                 # rubber & plastic footwear: Nike
     (3000, 3099, "Chemical (Specialty)"),
     (3140, 3149, "Shoe"),
     (3100, 3199, "Apparel"),
@@ -229,6 +236,8 @@ _SIC_RANGES = [
     (3900, 3999, "Diversified"),
     (4000, 4099, "Transportation (Railroads)"),
     (4100, 4199, "Transportation"),
+    (4210, 4210, "Transportation"),       # trucking & courier: UPS
+    (4215, 4215, "Transportation"),       # courier services
     (4200, 4299, "Trucking"),
     (4400, 4499, "Shipbuilding & Marine"),
     (4500, 4599, "Air Transport"),

@@ -150,6 +150,13 @@ def test_every_sic_mapping_points_at_a_real_industry():
     assert md.industry_for_sic("7372") == "Software (System & Application)"
     assert md.industry_for_sic("2834") == "Drugs (Pharmaceutical)"
     assert md.industry_for_sic(None) == md.DEFAULT_INDUSTRY
+    # Spot checks against companies whose filing code is easy to misread.
+    assert md.industry_for_sic("2080") == "Beverage (Soft)"         # Coca-Cola, PepsiCo
+    assert md.industry_for_sic("2082") == "Beverage (Alcoholic)"    # brewers
+    assert md.industry_for_sic("3021") == "Shoe"                    # Nike
+    assert md.industry_for_sic("2670") == "Diversified"             # 3M
+    assert md.industry_for_sic("4210") == "Transportation"          # UPS
+    assert md.industry_for_sic("4213") == "Trucking"
 
 
 def test_synthetic_rating():
