@@ -25,7 +25,7 @@ To try it without internet access or an email, run `python3 dcf_model.py --demo`
 
 ## Hosting it online
 
-`app.py` serves the same page and two read-only endpoints (`/api/search`, `/api/company`) as a standard WSGI app, which is what Vercel's Python runtime expects. To deploy, import the repository in Vercel and add one environment variable, `DCF_SEC_CONTACT`, set to the contact email SEC requires. There's nothing to build and no accounts or API keys: the endpoints only read public data and keep no user state. Lookups are cached at Vercel's edge for an hour, so repeat visitors don't reach SEC again. To try the hosted build locally, run `python3 app.py`.
+`app.py` serves the same page and two read-only endpoints (`/api/search`, `/api/company`) as a standard WSGI app, which is what Vercel's Python runtime expects. To deploy, import the repository in Vercel and add one environment variable, `DCF_SEC_CONTACT`, set to the contact email SEC requires. There's nothing to build and no accounts or API keys: the endpoints only read public data and keep no user state. SEC downloads are cached on the server, so repeat lookups don't reach SEC again. To try the hosted build locally, run `python3 app.py`.
 
 ## How the valuation works
 

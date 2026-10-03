@@ -1,6 +1,6 @@
 """The hosted (WSGI) entry point in app.py: same answers as the local server,
 a clear message when the SEC contact is missing, the UI source never served,
-and edge caching only on successful lookups."""
+and lookups never cached by a shared CDN."""
 import json
 
 import pytest
@@ -51,7 +51,8 @@ def test_bad_ticker_400_and_demo_company_cached(contact, monkeypatch):
     assert call("/api/other")[0] == 404
     monkeypatch.setitem(dcf_model.DEMO, "on", True)
     code, headers, body = call("/api/company", "ticker=ACME")
-    assert code == 200 and "s-maxage" in headers["Cache-Control"]
+    # Never cached by a shared CDN: one cached company must not answer for another.
+    assert code == 200 and "private" in headers["Cache-Control"] and "s-maxage" not in headers["Cache-Control"]
     assert json.loads(body)["ticker"] == "ACME"
     code, _, body = call("/api/search", "q=ac")
     assert code == 200 and json.loads(body)["results"][0]["ticker"] == "ACME"

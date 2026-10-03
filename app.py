@@ -9,8 +9,8 @@ endpoints as a standard WSGI application, so it can be put online:
     GET /api/company?ticker= one company's filings, price and market inputs
 
 They only read public data (SEC EDGAR, Treasury, Yahoo/Stooq) and keep no user
-state, so there is nothing to log in to and nothing to leak. Successful
-lookups are cached at the edge, so repeat visitors don't reach SEC again.
+state, so there is nothing to log in to and nothing to leak. SEC downloads
+are cached on the server, so repeat lookups don't reach SEC again.
 
 Set DCF_SEC_CONTACT in the host's environment variables: SEC asks every
 automated client to identify itself with a contact email.
@@ -26,8 +26,11 @@ os.environ.setdefault("DCF_CACHE_DIR", "/tmp/dcf_model_cache")
 import dcf_model  # noqa: E402
 
 WEB_DIR = dcf_model.WEB_DIR
-CACHE_SEARCH = "public, max-age=300, s-maxage=86400"
-CACHE_COMPANY = "public, max-age=300, s-maxage=3600"
+# No shared (edge) caching for lookups: Vercel's CDN served one company's
+# answer for every ?ticker= on the first deployment. The server keeps its own
+# disk cache of SEC downloads, so repeat lookups are still fast.
+CACHE_SEARCH = "private, max-age=300"
+CACHE_COMPANY = "private, max-age=300"
 SECURITY_HEADERS = [
     ("X-Content-Type-Options", "nosniff"),
     ("X-Frame-Options", "DENY"),
