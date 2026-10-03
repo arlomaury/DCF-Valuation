@@ -306,7 +306,9 @@ function AssumptionsPage({ a, set, why, reset, years }) {
           <NumInput label="Capex / revenue" value={a.capexPct} onChange={(v) => set({ capexPct: v })} hint={why.capexPct} />
           <NumInput label="Working capital / revenue" value={a.nwcPct} onChange={(v) => set({ nwcPct: v })} hint={why.nwcPct} />
         </div>
-        <div className="mt-4">
+        <div className="mt-4 space-y-2">
+          <Check label="Fade capex to steady state by year 10" value={a.capexFade} onChange={(v) => set({ capexFade: v })}
+            hint={why.capexFade || 'Capex moves from the rate above to D&A plus the reinvestment the terminal growth rate needs. Off: the rate above is held for every year.'} />
           <Check label="Add back stock-based compensation" value={a.addBackSBC} onChange={(v) => set({ addBackSBC: v })}
             hint={`Off by default: stock pay is a real cost to shareholders (it dilutes them), even though no cash leaves. Latest SBC: ${pct(a.sbcPct)} of revenue.`} />
         </div>

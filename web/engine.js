@@ -199,6 +199,7 @@
     const nwcPct = isNum(nwcPct0) ? clamp(nwcPct0, -0.3, 0.4) : 0.05;
     why.daPct = `Latest year's D&A / revenue.`;
     why.capexPct = `Average of the last 3 years' capex / revenue (including assets bought with finance leases).`;
+    why.capexFade = `Capex moves from today's level to the steady state the terminal value assumes by year ${n}: D&A plus the reinvestment needed to grow at the terminal rate (g ÷ RONIC of NOPAT).`;
     why.nwcPct = `Median working capital / revenue over 3 years (${pct(nwcPct)}); working capital grows with revenue.`;
 
     // Capital structure and cost of capital.
@@ -218,7 +219,7 @@
       sbcPct: round(isNum(latest.sbcPct) ? latest.sbcPct : 0),
       terminalGrowth: gT, terminalTax: tMarg,
       ronic: null, terminalMethod: 'gordon', exitMultiple: null,
-      midYear: true, addBackSBC: false, includeLongTermInvestments: true,
+      midYear: true, addBackSBC: false, capexFade: true, includeLongTermInvestments: true,
       // Cost of capital inputs
       riskFree: rf, erp: market.erp, marginalTax: tMarg,
       industry: data.industry, unleveredBeta: industry.unleveredBeta || 0.9,
@@ -282,6 +283,31 @@
   }
 
   // ─── Projection ─────────────────────────────────────────────────────────
+  /** Capex / revenue for each projected year. With capexFade on, it moves in a
+   *  straight line from today's level to the steady state the terminal value
+   *  assumes: in year n, capex - D&A + working capital growth = (g / RONIC) x
+   *  NOPAT. Without it, a company spending far above D&A (a utility building
+   *  out its grid) would keep doing so for ten years while its growth fades,
+   *  and the explicit years and the terminal value would describe two
+   *  different businesses. */
+  function capexSchedule(a, n, coc) {
+    const c0 = a.capexPct;
+    const steady = steadyStateCapexPct(a, n, coc);
+    if (!a.capexFade || !isNum(steady)) return Array.from({ length: n }, () => c0);
+    return Array.from({ length: n }, (_, i) => lerp(c0, steady, n > 1 ? (i + 1) / n : 1));
+  }
+
+  function steadyStateCapexPct(a, n, coc) {
+    const g = a.terminalGrowth;
+    const ronic = isNum(a.ronic) && a.ronic > 0 ? a.ronic : (coc && coc.wacc);
+    const m = a.ebitMargin && a.ebitMargin[n - 1];
+    const tT = isNum(a.terminalTax) ? a.terminalTax : a.marginalTax;
+    if (![g, ronic, m, tT, a.daPct, a.nwcPct].every(isNum) || ronic <= 0) return null;
+    const nopatPct = Math.max(m, 0) * (1 - tT);
+    const netCapex = clamp(g / ronic, 0, 1) * nopatPct - a.nwcPct * g / (1 + g);
+    return a.daPct + Math.max(netCapex, 0);
+  }
+
   function project(fin, a, mode, coc) {
     const h = historicalMetrics(fin);
     const base = h[0];
@@ -291,6 +317,7 @@
     let nwc = rev * a.nwcPct;               // normalised starting working capital
     let debt = a.debt || 0;
     const debtToRev = debt / base.revenue;
+    const capexPath = capexSchedule(a, n, coc);
     const rows = [];
     for (let i = 0; i < n; i++) {
       const g = a.revenueGrowth[i] ?? 0;
@@ -300,7 +327,7 @@
       const taxes = Math.max(ebit, 0) * t;  // no tax credit assumed on losses
       const nopat = ebit - taxes;
       const da = newRev * a.daPct;
-      const capex = newRev * a.capexPct;
+      const capex = newRev * capexPath[i];
       const newNwc = newRev * a.nwcPct;
       const dNwc = newNwc - nwc;
       const sbc = a.addBackSBC ? newRev * (a.sbcPct || 0) : 0;

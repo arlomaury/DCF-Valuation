@@ -216,3 +216,22 @@ test('RONIC equal to WACC (after rounding) does not trigger the value-destructio
   const v = DCF.value(simpleFin(), { ...a, ronic: Math.round(v0.discountRate * 1e4) / 1e4 - 0.00004 }, 'unlevered');
   assert.ok(!v.warnings.some((w) => /destroys value/.test(w)), v.warnings.join('; '));
 });
+
+test('capex fade: year-n reinvestment matches what the terminal value assumes', () => {
+  // Heavy builder: capex 40% of revenue against D&A 5%.
+  const a = simpleAssumptions({ capexPct: 0.40, capexFade: true, terminalGrowth: 0.02, revenueGrowth: Array(5).fill(0.02) });
+  const rows = DCF.project(simpleFin(), a, 'unlevered');
+  const last = rows[4];
+  // Steady state: capex - D&A + dNWC = (g / RONIC) x NOPAT in the final year.
+  close(last.capex - last.da + last.dNwc, (0.02 / 0.10) * last.nopat, 1e-9);
+  close(rows[0].capex / rows[0].revenue, 0.40 + (0.05 + 0.2 * 0.75 * 0.2 - 0.1 * 0.02 / 1.02 - 0.40) / 5);
+  // Off (and absent, as in older saved inputs): held flat.
+  const flat = DCF.project(simpleFin(), simpleAssumptions({ capexPct: 0.40 }), 'unlevered');
+  for (const r of flat) close(r.capex / r.revenue, 0.40);
+});
+
+test('capex fade is on by default', () => {
+  const data = { financials: simpleFin(), market: { riskFree: { rate: 0.04 }, erp: 0.05, marginalTaxRate: 0.25, industries: [] },
+    quote: { price: 10 }, shares: { value: 100 } };
+  assert.strictEqual(DCF.defaultAssumptions(data).assumptions.capexFade, true);
+});
