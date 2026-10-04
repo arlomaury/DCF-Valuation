@@ -24,6 +24,7 @@ for (let it = 0; it < 600; it++) {
     currentAssets: revs.map((r) => maybe(r * rnd() * 0.8)), currentLiabilities: revs.map((r) => maybe(r * rnd() * 0.6)),
     cash: revs.map((r) => maybe(r * rnd() * 0.3)), totalAssets: revs.map((r) => maybe(r * (0.5 + rnd() * 2))),
     totalDebt: revs.map((r) => r * rnd() * 0.8), currentDebt: revs.map((r) => r * rnd() * 0.05), sbc: revs.map((r) => maybe(r * 0.02)),
+    nolDTA: revs.map((r) => maybe(r * rnd() * 0.5, 0.5)), nolDTADomestic: revs.map((r) => maybe(r * rnd() * 0.4, 0.6)),
   };
   const data = { financials: { years, aligned: ali, latestBalance: { values: { totalDebt: ali.totalDebt[0], cash: ali.cash[0] || 0 } } },
     market, industry: pick(['Machinery', 'Banks (Regional)', 'Unknown']),
@@ -31,6 +32,11 @@ for (let it = 0; it < 600; it++) {
   let d;
   try { d = DCF.defaultAssumptions(data); } catch (e) { problems.push(['defaults threw', e.message, it]); continue; }
   const a = d.assumptions;
+  // Exercise loss carryforwards and the terminal beta cap on every kind of company.
+  if (rnd() < 0.4) a.startingNol = rev0 * rnd() * 3;
+  a.terminalBetaCap = pick([1.2, 1.2, null, 0.6, 2.0]);
+  if (rnd() < 0.3) a.unleveredBeta = 0.5 + rnd() * 1.5;
+  if (!Number.isFinite(a.startingNol) || a.startingNol < 0) problems.push(['bad startingNol', a.startingNol, it]);
   for (const k of ['revenueGrowth', 'ebitMargin', 'taxRate']) if (a[k].some((x) => !Number.isFinite(x))) problems.push(['non-finite default', k, it]);
   for (const k of ['daPct', 'capexPct', 'nwcPct', 'terminalGrowth', 'ronic', 'exitMultiple', 'unleveredBeta', 'spread', 'debt', 'cash'])
     if (!Number.isFinite(a[k])) problems.push(['non-finite default', k, a[k], it]);
@@ -42,7 +48,10 @@ for (let it = 0; it < 600; it++) {
       try { v = DCF.value(data.financials, { ...a, terminalMethod: method }, mode); } catch (e) { problems.push(['value threw', e.message, it]); continue; }
       if (!v) { if (Number.isFinite(ali.revenue[0]) && ali.revenue[0] > 0) problems.push(['null value with revenue', it]); continue; }
       if (v.error) { (global.errs = global.errs || {})[v.error.slice(0,40)] = ((global.errs||{})[v.error.slice(0,40)]||0)+1; continue; } global.ok=(global.ok||0)+1;
-      for (const k of ['enterpriseValue', 'equityValue', 'sumPV', 'pvTV', 'discountRate'])
+      if (!(v.pvNolLeft >= 0) || !Number.isFinite(v.pvNolLeft)) problems.push(['pvNolLeft', v.pvNolLeft, it]);
+      if (v.terminalRate > v.discountRate + 1e-12 && a.terminalBetaCap != null) problems.push(['terminal rate above today', it]);
+      if (v.proj.some((p) => !(p.nolEnd >= 0) || !(p.nolUsed >= 0) || p.taxes < -1e-9)) problems.push(['nol/taxes', mode, it]);
+      for (const k of ['enterpriseValue', 'equityValue', 'sumPV', 'pvTV', 'discountRate', 'terminalRate'])
         if (!Number.isFinite(v[k])) problems.push(['non-finite', mode, method, k, it]);
       if (a.shares > 0 && !Number.isFinite(v.perShare)) problems.push(['perShare', mode, it]);
       if (v.proj.some((p) => !Number.isFinite(p.fcf) || !Number.isFinite(p.pv))) problems.push(['proj NaN', mode, it]);

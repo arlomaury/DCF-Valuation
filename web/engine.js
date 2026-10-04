@@ -215,9 +215,8 @@
     // today: a profitable company's past effective rate already reflects the
     // losses it is using up, so adding them again would count them twice. The
     // filing reports the tax value of the losses (a deferred tax asset), so it
-    // is grossed up at the marginal rate to get the losses themselves.
-    // The federal asset is grossed up at the federal rate; only the total
-    // (federal + state + foreign) at the combined marginal rate.
+    // is grossed up to get the losses themselves: the federal asset at the
+    // federal rate, a total (federal + state + foreign) at the combined rate.
     const first = (k) => (fin.aligned && fin.aligned[k] ? fin.aligned[k][0] : null);
     const domDta = first('nolDTADomestic'), totDta = first('nolDTA');
     const useDom = isNum(domDta) && domDta > 0;
