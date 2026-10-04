@@ -430,7 +430,7 @@ function RatePage({ a, set, why, v, data, mode }) {
           </div>
           <div>
             <NumInput label="Default spread" value={rating.spread} onChange={(v) => set({ spread: v, autoSpread: false })}
-              hint={a.autoSpread ? `Damodaran's spread for ${rating.rating}, using the ${(a.price || 0) * (a.shares || 0) >= 5e9 ? 'large' : 'small'}-firm table.` : 'Your spread.'} />
+              hint={a.autoSpread ? `Damodaran's spread for ${rating.rating}, using the ${(a.price || 0) * (a.shares || 0) >= (a.ratingTables?.largeFirmCutoff ?? 5e9) ? 'large' : 'small'}-firm table.` : 'Your spread.'} />
             {!a.autoSpread && <button onClick={() => set({ autoSpread: true })} className="text-[11px] text-blue-300 mt-1">Use the synthetic rating again</button>}
           </div>
           <NumInput label="Pre-tax cost of debt override (optional)" optional value={a.costOfDebtOverride} onChange={(v) => set({ costOfDebtOverride: isNum(v) && v > 0 ? v : null })}
@@ -526,7 +526,7 @@ function ValuationPage({ v, a, mode, data, implied }) {
       <div className="grid sm:grid-cols-4 gap-3">
         <Stat label="Value per share" value={price(v.perShare)} tone="green" />
         <Stat label="Share price" value={price(a.price)} tone="slate" />
-        <Stat label={up >= 0 ? 'Upside' : 'Downside'} value={pct(up)} tone={up >= 0 ? 'green' : 'red'} />
+        <Stat label={up == null ? 'Upside' : up >= 0 ? 'Upside' : 'Downside'} value={up == null ? 'needs a price' : pct(up)} tone={up == null ? 'slate' : up >= 0 ? 'green' : 'red'} />
         <Stat label="Terminal value share" value={pct(v.tvShare)} sub="of total present value" tone="slate" />
       </div>
       <Warnings items={[
