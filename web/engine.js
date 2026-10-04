@@ -569,7 +569,12 @@
     };
     const n = a.years || PROJECTION_YEARS;
     const growth = bisect((g) => ps({ ...a, revenueGrowth: Array(n).fill(g) }), -0.3, 0.8, true);
-    const rate = bisect((r) => ps(a, r), a.terminalGrowth + 0.006, 0.4, false);
+    // The lowest discount rate the perpetuity can take depends on the
+    // terminal cost of capital (which sits apart from the explicit-period
+    // rate), so start from the first rate that gives a value at all.
+    let lo = a.terminalGrowth + 0.006;
+    while (lo < 0.4 && ps(a, lo) == null) lo += 0.0025;
+    const rate = lo < 0.4 ? bisect((r) => ps(a, r), lo, 0.4, false) : null;
     return { growth, rate, years: n };
   }
 
