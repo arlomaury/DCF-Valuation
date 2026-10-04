@@ -480,11 +480,21 @@ def parse_company_facts(raw):
             latest["values"].pop(k)
 
     shares = shares_outstanding(facts)
+    # Whether the latest year's EBIT already contains income from equity-method
+    # stakes: only when it was derived from a pre-tax income figure that
+    # includes that income (the second pre-tax tag excludes it). The engine
+    # adds the stakes' book value only when it does not.
+    y0 = years[0]
+    ebit_tag = ((series.get("operatingIncome") or {}).get("tags") or {}).get(y0) or ""
+    pti_tag = ((series.get("preTaxIncome") or {}).get("tags") or {}).get(y0) or ""
+    ebit_has_equity_income = ebit_tag.startswith("derived") and "IncomeLossFromEquityMethodInvestments" not in pti_tag
+
     return {
         "years": years,
         "aligned": aligned,
         "sources": sources,
         "derived": derived,
+        "ebitIncludesEquityIncome": ebit_has_equity_income,
         "fiscalYearEnd": (anchor.get("ends") or {}).get(years[0]),
         "latestBalance": latest,
         "shares": shares,

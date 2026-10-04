@@ -131,7 +131,7 @@ const PAGES = ['Company', 'History', 'Assumptions', 'Discount rate', 'Cash flows
 
 // One short "where does this come from" note per step.
 const PAGE_SOURCES = [
-  'Financial statements come from the company\'s 10-K and 10-Q filings on SEC EDGAR. The share price is a 15-minute-delayed quote from Cboe; shares outstanding come from the latest filing\'s cover page.',
+  'Financial statements come from the company\'s 10-K and 10-Q filings on SEC EDGAR. The share price is a recent market quote (a 15-minute-delayed Cboe quote on the website); the share count starts from the latest filing and adds options and stock awards (the Diluted shares box says how).',
   'Six years of reported figures from the 10-Ks. Margins, growth and ratios are calculated here from those numbers; nothing is estimated.',
   'Defaults are built from the history: growth from recent revenue trends, margins and capital spending from recent years, tax from the company\'s own rate moving to the 25% US rate. Each box says exactly how its number was set. Change any of them.',
   'The risk-free rate is today\'s 10-year Treasury yield. Beta and the market risk premium come from Professor Damodaran\'s data (NYU Stern), the source most analysts use; the debt spread comes from a credit rating estimated from interest coverage.',

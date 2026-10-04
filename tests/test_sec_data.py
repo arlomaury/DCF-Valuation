@@ -234,6 +234,25 @@ def test_ebit_derived_for_years_without_an_operating_income_subtotal():
     p = sd.parse_company_facts({"facts": facts})
     assert p["aligned"]["operatingIncome"] == [160, 160, 160, 170, 170, 170]
     assert "operatingIncome" in p["derived"]
+    assert p["ebitIncludesEquityIncome"] is True        # latest EBIT came from pre-tax income
+
+
+def test_equity_income_flag_follows_the_latest_year_and_the_pretax_tag():
+    facts = demo_company()["facts"]
+    facts["us-gaap"]["OperatingIncomeLoss"]["units"]["USD"] = [
+        f for f in facts["us-gaap"]["OperatingIncomeLoss"]["units"]["USD"] if not f["end"].startswith("2020")]
+    p = sd.parse_company_facts({"facts": facts})
+    assert "operatingIncome" in p["derived"]            # 2020 was filled in
+    assert p["ebitIncludesEquityIncome"] is False       # but 2025 is reported
+
+    facts = {}
+    for y in range(2020, 2026):
+        end, filed = f"{y}-12-31", f"{y + 1}-02-15"
+        add(facts, "Revenues", "USD", [_dur(1000, end, filed)])
+        add(facts, "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+            "USD", [_dur(150, end, filed)])
+    p = sd.parse_company_facts({"facts": facts})
+    assert p["ebitIncludesEquityIncome"] is False       # that pre-tax figure leaves equity income out
 
 
 def test_gap_outside_the_shown_years_does_not_mark_ebit_derived():

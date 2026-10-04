@@ -429,6 +429,41 @@ test('pension deficit and stakes are read from the balance sheet, stakes only wi
   assert.strictEqual(a.equityInvestments, 900);
   const b = DCF.defaultAssumptions(mk({ ...fin, derived: ['operatingIncome'] })).assumptions;
   assert.strictEqual(b.equityInvestments, 0);             // derived EBIT already holds that income
+  // The parser's per-latest-year flag wins over "some year was derived".
+  const c = DCF.defaultAssumptions(mk({ ...fin, derived: ['operatingIncome'], ebitIncludesEquityIncome: false })).assumptions;
+  assert.strictEqual(c.equityInvestments, 900);
+  const d = DCF.defaultAssumptions(mk({ ...fin, ebitIncludesEquityIncome: true })).assumptions;
+  assert.strictEqual(d.equityInvestments, 0);
+});
+
+test('equity valuation: RONIC is judged against the WACC, not the cost of equity', () => {
+  // Debt makes the cost of equity well above the WACC; RONIC sits between them.
+  const a = simpleAssumptions({ debt: 600, ronic: 0.085, terminalBetaCap: null, terminalBetaFloor: null });
+  const fin = simpleFin();
+  const u = DCF.value(fin, a, 'unlevered');
+  const l = DCF.value(fin, a, 'levered');
+  assert.ok(l.terminalRate > 0.085 && u.terminalRate < 0.085, `${u.terminalRate} ${l.terminalRate}`);
+  assert.ok(!l.warnings.some((w) => /growth destroys value/.test(w)));
+  assert.ok(!u.warnings.some((w) => /growth destroys value/.test(w)));
+});
+
+test('sensitivity: the base column and row are exactly the base case', () => {
+  const a = simpleAssumptions({ riskFree: 0.0418317, terminalGrowth: 0.0418317 * 0.5 });
+  const s = DCF.sensitivity(simpleFin(), a, 'unlevered');
+  assert.strictEqual(s.rates.filter((r) => Math.abs(r - s.base.rate) < 1e-9).length, 1);
+  const gi = s.growthTable.findIndex((row) => Math.abs(row.label - s.base.growth) < 1e-9);
+  const ri = s.rates.findIndex((r) => Math.abs(r - s.base.rate) < 1e-9);
+  assert.ok(gi >= 0 && ri >= 0);
+  assert.strictEqual(s.growthTable[gi].values[ri], DCF.value(simpleFin(), a, 'unlevered').perShare);
+});
+
+test('tax note says when no recent year was profitable', () => {
+  const fin = simpleFin();
+  fin.aligned.preTaxIncome = [-50, -40]; fin.aligned.incomeTax = [1, 1];
+  const data = { financials: fin, market: { riskFree: { rate: 0.04 }, erp: 0.05, marginalTaxRate: 0.25, industries: [] },
+    quote: { price: 10 }, shares: { value: 100 } };
+  const { why } = DCF.defaultAssumptions(data);
+  assert.match(why.taxRate, /No profitable year/);
 });
 
 test('sanity warnings: discount rate below the Treasury, implausible terminal multiple', () => {

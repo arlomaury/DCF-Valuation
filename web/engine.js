@@ -151,7 +151,8 @@
   /** Cost of capital for the terminal (stable-growth) period: the same inputs,
    *  but a high beta is brought down to the stable-period cap, because a firm
    *  growing at the rate of the economy carries roughly market risk. An empty
-   *  cap keeps today's beta. A low beta is left alone. */
+   *  cap keeps today's beta. A very low beta is raised to the floor for the
+   *  same reason. */
   function terminalCostOfCapital(inp, cap, floor) {
     const now = costOfCapital(inp);
     const hi = isNum(cap) && cap > 0 ? cap : Infinity;
@@ -236,7 +237,10 @@
     // Tax: today's effective rate converging to the marginal rate.
     const tEff0 = median(h.slice(0, 3).map((r) => r.taxRate));
     const tEff = isNum(tEff0) ? clamp(tEff0, 0, 0.4) : tMarg;
-    why.taxRate = `Median effective rate of the last 3 profitable years (${pct(tEff)}), converging to the ${pct(tMarg)} marginal rate by year ${n}: low effective rates (credits, deferrals) rarely last forever.`;
+    const taxYears = h.slice(0, 3).filter((r) => isNum(r.taxRate)).length;
+    why.taxRate = `${isNum(tEff0)
+      ? `Median effective rate of the profitable years among the last 3 (${taxYears} of 3, ${pct(tEff)})`
+      : `No profitable year among the last 3 to measure an effective rate, so the ${pct(tMarg)} marginal rate is used`}, converging to the ${pct(tMarg)} marginal rate by year ${n}: low effective rates (credits, deferrals) rarely last forever.`;
 
     // Existing tax losses. Only counted for a company that is losing money
     // today: a profitable company's past effective rate already reflects the
@@ -307,9 +311,12 @@
       // close it are tax-deductible, so it counts after tax.
       pensionDeficit: isNum(lb.pensionFundedStatus) && lb.pensionFundedStatus < 0
         ? Math.round(-lb.pensionFundedStatus * (1 - tMarg)) : 0,
-      // Only when EBIT is the reported operating income: a derived EBIT
-      // (pre-tax income + interest) already contains the equity income.
-      equityInvestments: (fin.derived || []).includes('operatingIncome') ? 0 : (lb.equityMethodInvestments || 0),
+      // Skipped only when the latest year's EBIT was derived from a pre-tax
+      // income figure that already contains the stakes' income. Older payloads
+      // without that flag fall back to "any derived EBIT".
+      equityInvestments: (typeof fin.ebitIncludesEquityIncome === 'boolean'
+        ? fin.ebitIncludesEquityIncome : (fin.derived || []).includes('operatingIncome'))
+        ? 0 : (lb.equityMethodInvestments || 0),
       preferredStock: lb.preferredStock || 0,
     };
     why.stub = `Valued as of the latest balance sheet${fin.latestBalance && fin.latestBalance.date ? ` (${fin.latestBalance.date})` : ''}, ${(stubYearsOf(fin) * 12).toFixed(0)} months after the last fiscal year-end: that part of year 1 is already in the cash on that balance sheet, so only the rest of the year is counted and every later cash flow is that much closer.`;
@@ -608,10 +615,13 @@
     // Sanity ranges professional reviewers check (Damodaran, Wall Street Prep).
     if (r < a.riskFree) warnings.push(`The discount rate (${pct(r)}) is below the risk-free rate (${pct(a.riskFree)}): no equity investor accepts less than a Treasury.`);
     if (r > 0.14) warnings.push(`The discount rate (${pct(r)}) is unusually high for a listed company (most US firms sit between about 5% and 10%). Check the beta and the debt spread.`);
-    if (isNum(a.ronic) && a.ronic - rT > 0.05) warnings.push(`New investment earns ${pct(a.ronic - rT)} above the cost of capital forever; even wide-moat companies rarely sustain more than a few points.`);
+    // RONIC is a return on all invested capital, so its hurdle is the terminal
+    // WACC (moved by any discount-rate override) even when valuing equity.
+    const ronicHurdle = cocT.wacc + (r - pick(coc));
+    if (isNum(a.ronic) && a.ronic - ronicHurdle > 0.05) warnings.push(`New investment earns ${pct(a.ronic - ronicHurdle)} above the cost of capital forever; even wide-moat companies rarely sustain more than a few points.`);
     if (method === 'gordon' && isNum(impliedExitMultiple) && (impliedExitMultiple < 4 || impliedExitMultiple > 30))
       warnings.push(`The perpetuity value implies ${impliedExitMultiple.toFixed(1)}× year-${n} EBITDA, outside the usual 4-30× range for listed companies. Cross-check the terminal assumptions.`);
-    if (isNum(a.ronic) && a.ronic < rT - 0.0005 && g > 0) warnings.push('Return on new investment is below the cost of capital, so growth destroys value in the terminal period.');
+    if (isNum(a.ronic) && a.ronic < ronicHurdle - 0.0005 && g > 0) warnings.push('Return on new investment is below the cost of capital, so growth destroys value in the terminal period.');
     if (!(a.shares > 0)) warnings.push('Shares outstanding are missing - enter them on the Company page.');
     if (!(a.price > 0)) warnings.push('No share price was found - enter it on the Company page so the market capital weights and upside can be computed.');
 
@@ -660,9 +670,9 @@
     const baseV = value(fin, a, mode);
     if (!baseV || baseV.error) return null;
     const r0 = baseV.discountRate;
-    const rates = [-0.015, -0.01, -0.005, 0, 0.005, 0.01, 0.015].map((d) => round(r0 + d, 6)).filter((x) => x > 0.02);
+    const rates = [-0.015, -0.01, -0.005, 0, 0.005, 0.01, 0.015].map((d) => (d === 0 ? r0 : round(r0 + d, 6))).filter((x) => x > 0.02);
     const g0 = a.terminalGrowth;
-    const growths = [-0.01, -0.005, 0, 0.005, 0.01].map((d) => round(g0 + d, 6)).filter((x) => x >= -0.01);
+    const growths = [-0.01, -0.005, 0, 0.005, 0.01].map((d) => (d === 0 ? g0 : round(g0 + d, 6))).filter((x) => x >= -0.01);
     const m0 = a.exitMultiple || 10;
     const mults = [-4, -2, 0, 2, 4].map((d) => m0 + d).filter((x) => x > 0);
     const cell = (over, rr) => {
