@@ -275,16 +275,20 @@ def extract_annual(facts, key, fy_ends=None):
     return {"values": values, "tags": used, "ends": ends}
 
 
-def extract_latest_instant(facts, key, as_of=None, max_age_days=400, not_before=None):
+def extract_latest_instant(facts, key, as_of=None, max_age_days=400, not_before=None, filing=None):
     """Most recent balance-sheet value from any 10-K or 10-Q.
 
     If `as_of` is given, prefer a value dated exactly then (so all balance
     sheet items come from the same report); otherwise fall back to the most
     recent value no older than `max_age_days` before `as_of`. A value dated
     before `not_before` (the last fiscal year-end) is ignored: the latest 10-K
-    left it out, which almost always means it is now zero."""
+    left it out, which almost always means it is now zero. Likewise when
+    `filing` (the accession number of the latest report) tags the item only
+    for an earlier date: its comparative column has a figure and its current
+    column is blank, so the item is now zero."""
     tags, _combine, _kind = CONCEPTS[key]
     best = None                         # (end, prio, filed, val, tag)
+    in_filing = False                   # the latest report tags this item at all
     for prio, spec in enumerate(tags):
         for tag, entries in _tag_sources(facts, spec):
             for f in entries:
@@ -295,6 +299,8 @@ def extract_latest_instant(facts, key, as_of=None, max_age_days=400, not_before=
                     continue
                 if as_of and end > as_of:
                     continue
+                if filing and f.get("accn") == filing:
+                    in_filing = True
                 cand = (end, -prio, f.get("filed", ""), f["val"], tag)
                 if best is None or cand[:3] > best[:3]:
                     best = cand
@@ -305,6 +311,8 @@ def extract_latest_instant(facts, key, as_of=None, max_age_days=400, not_before=
         return None
     if not_before and end < not_before:
         return None
+    if in_filing and as_of and end < as_of:
+        return None
     return {"value": val, "date": end, "tag": tag}
 
 
@@ -314,6 +322,21 @@ def latest_balance_date(facts):
         v = extract_latest_instant(facts, key)
         if v:
             return v["date"]
+    return None
+
+
+def latest_balance_filing(facts, bs_date):
+    """Accession number of the report the latest balance sheet comes from:
+    the most recently filed total-assets figure dated `bs_date`."""
+    best = None
+    for key in ("totalAssets", "currentAssets"):
+        for _tag, entries in _tag_sources(facts, CONCEPTS[key][0][0]):
+            for f in entries:
+                if f.get("end") == bs_date and f.get("form") in BALANCE_FORMS and not f.get("start") and f.get("accn"):
+                    if best is None or f.get("filed", "") > best.get("filed", ""):
+                        best = f
+        if best:
+            return best["accn"]
     return None
 
 
@@ -481,8 +504,9 @@ def parse_company_facts(raw):
         # as the last 10-K: Microsoft's commercial paper from the 2025 10-K was
         # being added to its 2026 debt after the 2026 10-K no longer listed it.
         last_fye = max((e for e in fy_ends if e <= bs_date), default=None)
+        accn = latest_balance_filing(facts, bs_date)
         for key in BALANCE_KEYS:
-            v = extract_latest_instant(facts, key, as_of=bs_date, not_before=last_fye)
+            v = extract_latest_instant(facts, key, as_of=bs_date, not_before=last_fye, filing=accn)
             if v:
                 latest["values"][key] = v["value"]
                 latest["sources"][key] = f'{v["tag"]} ({v["date"]})'

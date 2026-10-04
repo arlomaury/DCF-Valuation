@@ -394,3 +394,21 @@ def test_current_portion_from_maturity_table_when_not_tagged_on_balance_sheet():
     add(facts, "LongTermDebtCurrent", "USD", [_inst(7000, "2025-12-31", "2026-02-13")])
     p = sd.parse_company_facts({"facts": facts})
     assert p["aligned"]["totalDebt"][0] == 30696 + 5514 + 7000
+
+
+def test_item_blank_in_latest_10q_current_column_counts_as_zero():
+    # The latest 10-Q shows commercial paper only in its year-end comparative
+    # column: it has been repaid, so it must not be carried into today's debt.
+    # An item the 10-Q doesn't show at all (a 10-K note item) still carries.
+    from demo_data import _inst
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2026-02-01", "2026-03-18")])
+    add(facts, "Assets", "USD", [_inst(900, "2026-02-01", "2026-03-18"),
+                                 _inst(950, "2026-08-02", "2026-08-26", form="10-Q")])
+    add(facts, "LongTermDebtNoncurrent", "USD", [_inst(400, "2026-02-01", "2026-03-18"),
+                                                 _inst(390, "2026-08-02", "2026-08-26", form="10-Q")])
+    add(facts, "CommercialPaper", "USD", [_inst(44, "2026-02-01", "2026-03-18"),
+                                          _inst(44, "2026-02-01", "2026-08-26", form="10-Q")])
+    add(facts, "FinanceLeaseLiability", "USD", [_inst(12, "2026-02-01", "2026-03-18")])
+    lb = sd.parse_company_facts({"facts": facts})["latestBalance"]
+    assert lb["values"]["totalDebt"] == 390 + 12
