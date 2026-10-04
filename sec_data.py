@@ -520,9 +520,11 @@ def choose_share_count(parsed):
     the result is flagged for the user to check.  A dilution factor (diluted
     / basic weighted shares) accounts for options and RSUs."""
     a = parsed["aligned"]
-    basic = next((v for v in a.get("basicShares", []) if v), None)
-    diluted = next((v for v in a.get("dilutedShares", []) if v), None)
+    pos = lambda v: _is_num(v) and v > 0  # noqa: E731 - a negative or zero count is a tagging error
+    basic = next((v for v in a.get("basicShares", []) if pos(v)), None)
+    diluted = next((v for v in a.get("dilutedShares", []) if pos(v)), None)
     bs = (parsed.get("latestBalance") or {}).get("values", {}).get("_bsShares")
+    bs = bs if pos(bs) else None
     cover_info = parsed.get("shares") or {}
     cover = cover_info.get("value")
     refs = [r for r in (basic, bs) if r]

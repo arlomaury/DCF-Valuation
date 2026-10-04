@@ -337,3 +337,10 @@ def test_balance_item_dropped_from_latest_10k_is_not_carried_over():
     lb = sd.parse_company_facts({"facts": facts})["latestBalance"]
     assert lb["date"] == "2026-09-30" and lb["values"]["totalDebt"] == 370
     assert lb["values"]["pensionFundedStatus"] == -30
+
+
+def test_share_count_ignores_negative_counts():
+    parsed = {"aligned": {"basicShares": [-5e7, 1.0e9], "dilutedShares": [1.02e9]},
+              "latestBalance": {"values": {"_bsShares": -1}}, "shares": None}
+    s = sd.choose_share_count(parsed)
+    assert s["value"] == pytest.approx(1.02e9)
