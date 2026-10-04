@@ -219,6 +219,11 @@ function CompanyPage({ onLoad, loading, error, data, a, set, mode, setMode }) {
               <NumInput label="Diluted shares (millions)" kind="num" suffix="M" value={a.shares / 1e6} onChange={(v) => set({ shares: v * 1e6 })}
                 hint={data.shares?.basis ? `From ${data.shares.basis}.` : 'Enter manually.'} />
               <Stat label="Market cap" value={money(a.price * a.shares)} tone="slate" />
+              <NumInput label="Total debt (millions)" kind="num" prefix="$" suffix="M" dp={0} value={a.debt / 1e6}
+                onChange={(v) => set({ debt: Math.max(0, v) * 1e6 })}
+                hint={Object.keys(lb?.debtParts || {}).length
+                  ? `From the latest balance sheet: ${Object.entries(lb.debtParts).map(([k, x]) => `${k.toLowerCase()} ${money(x)}`).join(', ')}.`
+                  : 'No debt found in the filings. Enter it if the company has any.'} />
             </div>
             <p className="text-[11px] text-slate-500 mt-3">Balance sheet for the equity bridge: {lb?.date ? `latest filing dated ${lb.date}` : 'latest 10-K'}. Financial statements: SEC EDGAR XBRL.</p>
             <div className="mt-2"><Warnings items={[
@@ -231,6 +236,13 @@ function CompanyPage({ onLoad, loading, error, data, a, set, mode, setMode }) {
               a.price > 0 && a.shares > 0 && (data.financials.aligned.revenue || [])[0] > 0
                 && a.price * a.shares < 0.005 * data.financials.aligned.revenue[0]
                 && `The share count gives a market cap of ${money(a.price * a.shares)}, implausibly small next to revenue of ${money(data.financials.aligned.revenue[0])}. The filing may list only one share class, or count shares in a different class from the quoted price. Check diluted shares against the latest 10-Q.`,
+              // Interest far above what the debt found could cost means debt is
+              // missing: some companies (Ford) report it only by segment.
+              (() => {
+                const int0 = (data.financials.aligned.interestExpense || [])[0], rev0 = (data.financials.aligned.revenue || [])[0];
+                return int0 > 0 && rev0 > 0 && int0 > 0.002 * rev0 && int0 > 0.2 * Math.max(a.debt, 1)
+                  && `Interest expense of ${money(int0)} is more than 20% of the ${money(a.debt)} of debt found, so some debt is probably missing (some companies report it only by business segment). Check the balance sheet in the latest 10-Q and enter total debt above.`;
+              })(),
               !(data.financials.aligned.capex || []).slice(0, 3).some((x) => x != null)
                 && 'Capital spending was not found in the last 3 years of filings (some companies tag it with their own labels), so capex is set equal to D&A. Check the cash-flow statement and enter the real figure on the Assumptions page.',
             ].filter(Boolean)} /></div>
@@ -619,7 +631,7 @@ function App() {
   }, []);
 
   const set = (patch) => setA((p) => ({ ...p, ...patch }));
-  const reset = () => defaults && setA({ ...defaults.assumptions, price: a.price, shares: a.shares });
+  const reset = () => defaults && setA({ ...defaults.assumptions, price: a.price, shares: a.shares, debt: a.debt });
   const history = useMemo(() => (data ? E.historicalMetrics(data.financials) : []), [data]);
   const v = useMemo(() => (data && a ? E.value(data.financials, a, mode) : null), [data, a, mode]);
   const s = useMemo(() => (data && a && page === 6 ? E.sensitivity(data.financials, a, mode) : null), [data, a, mode, page]);
