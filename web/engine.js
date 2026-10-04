@@ -22,6 +22,8 @@
   // Damodaran's rule of thumb for the stable-growth period: a mature firm's
   // beta should not exceed 1.2 (two-thirds of US firms sit in 0.8-1.2).
   const STABLE_BETA_CAP = 1.2;
+  // Federal corporate rate, for grossing up a federal-only tax asset.
+  const FEDERAL_TAX_RATE = 0.21;
 
   const isNum = (x) => typeof x === 'number' && isFinite(x);
   const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
@@ -214,11 +216,17 @@
     // losses it is using up, so adding them again would count them twice. The
     // filing reports the tax value of the losses (a deferred tax asset), so it
     // is grossed up at the marginal rate to get the losses themselves.
-    const nolDta = fin.aligned && fin.aligned.nolDTA ? fin.aligned.nolDTA[0] : null;
+    // The federal asset is grossed up at the federal rate; only the total
+    // (federal + state + foreign) at the combined marginal rate.
+    const first = (k) => (fin.aligned && fin.aligned[k] ? fin.aligned[k][0] : null);
+    const domDta = first('nolDTADomestic'), totDta = first('nolDTA');
+    const useDom = isNum(domDta) && domDta > 0;
+    const nolDta = useDom ? domDta : totDta;
+    const grossUp = useDom ? FEDERAL_TAX_RATE : tMarg;
     const lossMaking = isNum(latest.ebit) && latest.ebit <= 0;
-    const startingNol = lossMaking && isNum(nolDta) && nolDta > 0 && tMarg > 0 ? nolDta / tMarg : 0;
+    const startingNol = lossMaking && isNum(nolDta) && nolDta > 0 && grossUp > 0 ? nolDta / grossUp : 0;
     why.startingNol = startingNol > 0
-      ? `The latest 10-K reports a ${money(nolDta)} deferred tax asset for loss carryforwards, about ${money(startingNol)} of losses at the ${pct(tMarg)} rate. They shelter future profits, up to 80% of each year's taxable income.`
+      ? `The latest 10-K reports a ${money(nolDta)} ${useDom ? 'federal ' : ''}deferred tax asset for loss carryforwards, about ${money(startingNol)} of losses at the ${pct(grossUp)} ${useDom ? 'federal' : 'combined'} rate. They shelter future profits, up to 80% of each year's taxable income; any left after year ${n} are valued separately.`
       : lossMaking
         ? 'No loss carryforward was found in the filings. Losses projected from here on are still carried forward.'
         : 'Not used for a profitable company: its past tax rate already reflects any losses it is using up. Losses projected from here on are still carried forward.';
@@ -287,10 +295,10 @@
     const roic = mean(h.slice(0, 3).map((r) => r.roic));
     if (isNum(roic) && roic > coc.wacc) {
       a.ronic = round(coc.wacc + 0.5 * (Math.min(roic, 0.4) - coc.wacc));
-      why.ronic = `Half-way between the 3-year ROIC (${pct(roic)}) and the WACC (${pct(coc.wacc)}): excess returns on new investment fade as competitors catch up.`;
+      why.ronic = `Half-way between the 3-year ROIC (${pct(roic)}) and the terminal-period WACC (${pct(coc.wacc)}): excess returns on new investment fade as competitors catch up.`;
     } else {
       a.ronic = round(coc.wacc);
-      why.ronic = `Equal to the WACC - new investment in the long run earns its cost of capital${isNum(roic) ? ` (3-year ROIC is ${pct(roic)})` : ''}.`;
+      why.ronic = `Equal to the terminal-period WACC (${pct(coc.wacc)}) - new investment in the long run earns its cost of capital${isNum(roic) ? ` (3-year ROIC is ${pct(roic)})` : ''}.`;
     }
     Object.assign(a, overrides);
     // Exit multiple: the EV/EBITDA the perpetuity method implies, as a starting
@@ -470,14 +478,32 @@
       return { error: warnings[0] || 'Terminal value could not be computed.', warnings, proj: pvRows, coc, discountRate: r };
     }
 
+    // Tax losses still unused after year n keep sheltering profit (up to 80%
+    // a year) in the terminal period, but the perpetuity taxes year 11 in
+    // full. Their tax saving is valued here, year by year until used up, on
+    // the same footing as the perpetuity: taxable income growing at g,
+    // discounted at the terminal rate back to the terminal-value date.
+    let pvNolLeft = 0;
+    const nolLeft = isNum(last.nolEnd) ? last.nolEnd : 0;
+    if (nolLeft > 0 && tT > 0 && rT > g) {
+      const base = mode === 'levered' ? last.ebit - last.debt * coc.kdPre : last.ebit;
+      let left = nolLeft, pv = 0;
+      for (let k = 1; k <= 200 && left > 0 && base > 0; k++) {
+        const used = Math.min(left, NOL_OFFSET_LIMIT * base * Math.pow(1 + g, k));
+        pv += used * tT / Math.pow(1 + rT, k);
+        left -= used;
+      }
+      pvNolLeft = pv * dfAt(a.midYear ? n - 0.5 : n);
+    }
+
     const nonOperating = (a.cash || 0) + (a.includeLongTermInvestments ? (a.longTermInvestments || 0) : 0);
     const claims = (a.minorityInterest || 0) + (a.preferredStock || 0);
     let ev, equity;
     if (mode === 'levered') {
-      equity = sumPV + pvTV + nonOperating - claims;
+      equity = sumPV + pvTV + pvNolLeft + nonOperating - claims;
       ev = equity + (a.debt || 0) - nonOperating + claims;
     } else {
-      ev = sumPV + pvTV;
+      ev = sumPV + pvTV + pvNolLeft;
       equity = ev - (a.debt || 0) - claims + nonOperating;
     }
     const perShare = a.shares > 0 ? equity / a.shares : null;
@@ -514,7 +540,7 @@
 
     return {
       mode, discountRate: r, terminalRate: rT, cocTerminal: cocT, coc, proj: pvRows, sumPV,
-      tvGordon, tvExit, pvGordon, pvExit, pvTV, terminalMethod: method,
+      tvGordon, tvExit, pvGordon, pvExit, pvTV, terminalMethod: method, pvNolLeft, nolLeft,
       fcfNext, nopatNext, reinvestRate, ronic,
       enterpriseValue: ev, equityValue: equity, perShare, upside,
       nonOperating, claims, debt: a.debt || 0, tvShare,

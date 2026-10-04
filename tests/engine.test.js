@@ -297,6 +297,26 @@ test('tax losses: defaults count filed carryforwards only for a loss-making comp
   };
   close(DCF.defaultAssumptions(data(-50)).assumptions.startingNol, 100);   // 25 / 25%
   close(DCF.defaultAssumptions(data(200)).assumptions.startingNol, 0);
+  // A federal-only asset is grossed up at the federal 21%.
+  const fed = data(-50); fed.financials.aligned.nolDTADomestic = [21, null];
+  close(DCF.defaultAssumptions(fed).assumptions.startingNol, 100);
+});
+
+test('tax losses: losses left after year 10 are valued, not dropped', () => {
+  const a = simpleAssumptions({ startingNol: 5000 });
+  const v = DCF.value(simpleFin(), a, 'unlevered');
+  const last = v.proj[v.proj.length - 1];
+  assert.ok(last.nolEnd > 0);
+  // Recompute by hand: shelter 80% of taxable income each year until gone.
+  let left = last.nolEnd, pv = 0;
+  for (let k = 1; left > 0; k++) {
+    const used = Math.min(left, 0.8 * last.ebit * Math.pow(1.02, k));
+    pv += used * 0.25 / Math.pow(1 + v.terminalRate, k); left -= used;
+  }
+  close(v.pvNolLeft, pv / Math.pow(1 + v.discountRate, 5));
+  const v0 = DCF.value(simpleFin(), simpleAssumptions(), 'unlevered');
+  close(v.enterpriseValue - v.pvNolLeft - v.sumPV - v.pvTV, 0);
+  assert.ok(v.perShare > v0.perShare);
 });
 
 // ─── Stable-period beta ────────────────────────────────────────────────────

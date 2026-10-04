@@ -462,12 +462,13 @@ function ValuationPage({ v, a, mode, data }) {
   if (v.error) return <Warnings items={[v.error]} />;
   const up = v.upside;
   const lb = data.financials.latestBalance;
+  const nolLine = v.pvNolLeft > 0 ? [[`+ Tax losses left after year 10 (${money(v.nolLeft)})`, v.pvNolLeft]] : [];
   const bridge = mode === 'levered' ? [
-    ['PV of free cash flow to equity', v.sumPV], ['+ PV of terminal value', v.pvTV],
+    ['PV of free cash flow to equity', v.sumPV], ['+ PV of terminal value', v.pvTV], ...nolLine,
     ['+ Cash & securities', a.cash], ...(a.includeLongTermInvestments ? [['+ Long-term investments', a.longTermInvestments]] : []),
     ['− Minority interest', -a.minorityInterest], ['− Preferred stock', -a.preferredStock],
   ] : [
-    ['PV of free cash flow, years 1–10', v.sumPV], ['+ PV of terminal value', v.pvTV], ['= Enterprise value', v.enterpriseValue, true],
+    ['PV of free cash flow, years 1–10', v.sumPV], ['+ PV of terminal value', v.pvTV], ...nolLine, ['= Enterprise value', v.enterpriseValue, true],
     ['− Debt (incl. finance leases)', -a.debt], ['− Minority interest', -a.minorityInterest], ['− Preferred stock', -a.preferredStock],
     ['+ Cash & short-term investments', a.cash], ...(a.includeLongTermInvestments ? [['+ Long-term investments', a.longTermInvestments]] : []),
   ];
@@ -496,7 +497,9 @@ function ValuationPage({ v, a, mode, data }) {
             <div className="flex justify-between border-t border-slate-600 pt-1.5 font-semibold text-emerald-300"><span>= Value per share</span><span className="font-mono">{price(v.perShare)}</span></div>
           </div>
         </Card>
-        <Card title="Terminal value" subtitle={`Discount rate ${pct(v.discountRate, 2)} · terminal growth ${pct(a.terminalGrowth)}`}>
+        <Card title="Terminal value" subtitle={`Discount rate ${pct(v.discountRate, 2)}`
+          + (Math.abs(v.terminalRate - v.discountRate) > 1e-9 ? ` (terminal period ${pct(v.terminalRate, 2)})` : '')
+          + ` · terminal growth ${pct(a.terminalGrowth)}`}>
           <div className="space-y-1.5 text-sm text-slate-300">
             <div className="flex justify-between"><span>NOPAT in year 11</span><span className="font-mono">{money(v.nopatNext)}</span></div>
             <div className="flex justify-between"><span>Reinvestment rate (g ÷ RONIC)</span><span className="font-mono">{pct(v.reinvestRate)}</span></div>

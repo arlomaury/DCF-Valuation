@@ -110,9 +110,11 @@ CONCEPTS = {
     "operatingLeaseLiability": (["OperatingLeaseLiability"], "first", "instant"),
     "minorityInterest": (["MinorityInterest"], "first", "instant"),
     # Tax value of loss carryforwards, from the 10-K tax footnote (annual).
-    # Domestic first: foreign losses cannot shelter US profits.
-    "nolDTA": (["DeferredTaxAssetsOperatingLossCarryforwardsDomestic",
-                "DeferredTaxAssetsOperatingLossCarryforwards"], "first", "instant"),
+    # Kept as two keys because they are grossed up at different rates: the
+    # domestic tag is the FEDERAL asset (losses x 21%), the total one mixes
+    # federal, state and foreign.
+    "nolDTADomestic": (["DeferredTaxAssetsOperatingLossCarryforwardsDomestic"], "first", "instant"),
+    "nolDTA": (["DeferredTaxAssetsOperatingLossCarryforwards"], "first", "instant"),
     "preferredStock": (["PreferredStockValue"], "first", "instant"),
 }
 
