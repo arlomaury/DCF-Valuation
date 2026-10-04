@@ -635,7 +635,6 @@
     };
   }
 
-  /** Per-share value across discount rates (columns) and a second input (rows). */
   /** Reverse DCF: what today's price implies. Holding every other input,
    *  the constant revenue growth for the forecast years, and separately the
    *  discount rate, at which the per-share value equals the share price.
@@ -666,6 +665,7 @@
     return { growth, rate, years: n };
   }
 
+  /** Per-share value across discount rates (columns) and a second input (rows). */
   function sensitivity(fin, a, mode = 'unlevered') {
     const baseV = value(fin, a, mode);
     if (!baseV || baseV.error) return null;

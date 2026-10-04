@@ -372,8 +372,8 @@ function AssumptionsPage({ a, set, why, reset, years }) {
         <div className="mt-4 space-y-2">
           <Check label="Mid-year discounting" value={a.midYear} onChange={(v) => set({ midYear: v })}
             hint="Cash arrives through the year, not on 31 December, so each year is discounted from its midpoint." />
-          <Check label={`Value as of the latest balance sheet (stub period of ${((a.stubYears || 0) * 12).toFixed(0)} months)`} value={a.stubPeriod}
-            onChange={(v) => set({ stubPeriod: v })} hint={why.stub} />
+          {a.stubYears > 0 && <Check label={`Value as of the latest balance sheet (stub period of ${(a.stubYears * 12).toFixed(0)} months)`} value={a.stubPeriod}
+            onChange={(v) => set({ stubPeriod: v })} hint={why.stub} />}
           <Check label="Count long-term marketable securities as cash" value={a.includeLongTermInvestments} onChange={(v) => set({ includeLongTermInvestments: v })}
             hint="Non-operating investments add to equity value. Turn off if they are strategic stakes that are already in operating income." />
         </div>

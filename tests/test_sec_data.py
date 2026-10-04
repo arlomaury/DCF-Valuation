@@ -317,3 +317,23 @@ def test_pension_status_stakes_impairments_and_year_end_are_read():
     assert lb["pensionFundedStatus"] == -4e8 and lb["equityMethodInvestments"] == 9e8
     assert p["aligned"]["impairments"][0] == 5e7
     assert p["fiscalYearEnd"] == "2025-12-31"
+
+
+def test_balance_item_dropped_from_latest_10k_is_not_carried_over():
+    # Commercial paper was in the 2025 10-K but not the 2026 one (Microsoft):
+    # it must not be added to the 2026 debt. A 10-K item still counts in a
+    # later 10-Q that does not repeat it.
+    from demo_data import _inst
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2025-06-30", "2025-08-01"), _dur(110, "2026-06-30", "2026-08-01")])
+    add(facts, "Assets", "USD", [_inst(900, "2025-06-30", "2025-08-01"), _inst(1000, "2026-06-30", "2026-08-01")])
+    add(facts, "LongTermDebtNoncurrent", "USD", [_inst(400, "2025-06-30", "2025-08-01"), _inst(380, "2026-06-30", "2026-08-01")])
+    add(facts, "CommercialPaper", "USD", [_inst(50, "2025-06-30", "2025-08-01")])
+    add(facts, "DefinedBenefitPlanFundedStatusOfPlan", "USD", [_inst(-30, "2026-06-30", "2026-08-01")])
+    lb = sd.parse_company_facts({"facts": facts})["latestBalance"]
+    assert lb["values"]["totalDebt"] == 380
+    add(facts, "Assets", "USD", [_inst(1010, "2026-09-30", "2026-10-30", form="10-Q")])
+    add(facts, "LongTermDebtNoncurrent", "USD", [_inst(370, "2026-09-30", "2026-10-30", form="10-Q")])
+    lb = sd.parse_company_facts({"facts": facts})["latestBalance"]
+    assert lb["date"] == "2026-09-30" and lb["values"]["totalDebt"] == 370
+    assert lb["values"]["pensionFundedStatus"] == -30

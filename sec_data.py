@@ -265,12 +265,14 @@ def extract_annual(facts, key, fy_ends=None):
     return {"values": values, "tags": used, "ends": ends}
 
 
-def extract_latest_instant(facts, key, as_of=None, max_age_days=400):
+def extract_latest_instant(facts, key, as_of=None, max_age_days=400, not_before=None):
     """Most recent balance-sheet value from any 10-K or 10-Q.
 
     If `as_of` is given, prefer a value dated exactly then (so all balance
     sheet items come from the same report); otherwise fall back to the most
-    recent value no older than `max_age_days` before `as_of`."""
+    recent value no older than `max_age_days` before `as_of`. A value dated
+    before `not_before` (the last fiscal year-end) is ignored: the latest 10-K
+    left it out, which almost always means it is now zero."""
     tags, _combine, _kind = CONCEPTS[key]
     best = None                         # (end, prio, filed, val, tag)
     for prio, spec in enumerate(tags):
@@ -290,6 +292,8 @@ def extract_latest_instant(facts, key, as_of=None, max_age_days=400):
         return None
     end, _p, _filed, val, tag = best
     if as_of and (_d(as_of) - _d(end)).days > max_age_days:
+        return None
+    if not_before and end < not_before:
         return None
     return {"value": val, "date": end, "tag": tag}
 
@@ -463,8 +467,12 @@ def parse_company_facts(raw):
     latest = {"date": bs_date, "values": {}, "sources": {}}
     if bs_date:
         dates = {}
+        # Items carried over from an older report must be at least as recent
+        # as the last 10-K: Microsoft's commercial paper from the 2025 10-K was
+        # being added to its 2026 debt after the 2026 10-K no longer listed it.
+        last_fye = max((e for e in fy_ends if e <= bs_date), default=None)
         for key in BALANCE_KEYS:
-            v = extract_latest_instant(facts, key, as_of=bs_date)
+            v = extract_latest_instant(facts, key, as_of=bs_date, not_before=last_fye)
             if v:
                 latest["values"][key] = v["value"]
                 latest["sources"][key] = f'{v["tag"]} ({v["date"]})'
