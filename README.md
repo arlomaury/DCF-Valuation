@@ -113,6 +113,7 @@ Only run `scripts/build_web.sh` (needs Node 18+) after editing the UI. The compi
 - US GAAP 10-K filers only. Foreign companies that file 20-F (IFRS) aren't supported.
 - Not suited to banks, insurers, or other financial firms.
 - Share classes with different economics, such as Berkshire's A and B, may need the share count entered by hand. The app falls back to weighted-average shares when the cover-page count looks inconsistent.
+- The pension deficit is read from the single total funded-status tag. Many companies (Procter & Gamble, Caterpillar, Coca-Cola) only report it split by plan, so it shows as zero for them. Check the pension note in the 10-K for those.
 - Operating leases stay in operating costs, which is consistent with US GAAP EBIT. They aren't capitalized as debt.
 - Damodaran's tables are updated each January. Update `market_data.py` to refresh them.
 
