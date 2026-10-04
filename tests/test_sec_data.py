@@ -432,3 +432,21 @@ def test_negative_interest_expense_is_read_as_a_cost():
     add(facts, "InterestExpense", "USD", [_dur(-18, "2025-09-27", "2025-11-13")])
     p = sd.parse_company_facts({"facts": facts})
     assert p["aligned"]["interestExpense"] == [18]
+
+
+def test_noncurrent_notes_payable_count_as_long_term_debt():
+    # Oracle: no LongTermDebtNoncurrent; bonds are LongTermNotesPayable.
+    from demo_data import _inst
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2026-05-31", "2026-06-22")])
+    add(facts, "Assets", "USD", [_inst(900, "2026-05-31", "2026-06-22")])
+    add(facts, "DebtCurrent", "USD", [_inst(7, "2026-05-31", "2026-06-22")])
+    add(facts, "LongTermNotesPayable", "USD", [_inst(122, "2026-05-31", "2026-06-22")])
+    p = sd.parse_company_facts({"facts": facts})
+    assert p["aligned"]["totalDebt"][0] == 129
+
+
+def test_debt_parts_never_negative():
+    vals = {"_ltDebtTotal": 5, "_ltDebtCurrent": 6}
+    total, parts, _cur = sd.compose_debt(vals.get)
+    assert total == 6 and min(parts.values()) >= 0

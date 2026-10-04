@@ -119,7 +119,8 @@ CONCEPTS = {
                         "LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths"],
                        "first", "instant"),
     "_shortBorrowings": (["ShortTermBorrowings", "CommercialPaper"], "first", "instant"),
-    "_ltDebtNoncurrent": (["LongTermDebtNoncurrent"], "first", "instant"),
+    # Oracle tags its ~$120B of bonds only as noncurrent notes payable.
+    "_ltDebtNoncurrent": (["LongTermDebtNoncurrent", "LongTermNotesPayable"], "first", "instant"),
     "_ltDebtAndLeasesNoncurrent": (["LongTermDebtAndCapitalLeaseObligations"], "first", "instant"),
     "_ltDebtTotal": (["LongTermDebt"], "first", "instant"),
     # Current and noncurrent debt and finance leases in one figure. General
@@ -400,11 +401,11 @@ def compose_debt(get, date_of=None):
         if total_ltd is not None:
             # LongTermDebt includes its current portion, which is already
             # counted in `cur` above whenever it was reported.
-            nonc = total_ltd - (get("_ltDebtCurrent") or 0)
+            nonc = max(0, total_ltd - (get("_ltDebtCurrent") or 0))
     if nonc is None:
         incl = get("_debtAndLeasesInclCurrent")
         if incl is not None:
-            nonc = incl - (cur or 0)
+            nonc = max(0, incl - (cur or 0))
             leases_inside = True
     if nonc is not None:
         parts["Long-term debt" + (" (incl. finance leases)" if leases_inside else "")] = nonc
