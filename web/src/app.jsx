@@ -129,6 +129,27 @@ function Warnings({ items }) {
 // ─── Pages ───────────────────────────────────────────────────────────────
 const PAGES = ['Company', 'History', 'Assumptions', 'Discount rate', 'Cash flows', 'Valuation', 'Sensitivity'];
 
+// One short "where does this come from" note per step.
+const PAGE_SOURCES = [
+  'Financial statements come from the company\'s 10-K and 10-Q filings on SEC EDGAR. The share price is a 15-minute-delayed quote from Cboe; shares outstanding come from the latest filing\'s cover page.',
+  'Six years of reported figures from the 10-Ks. Margins, growth and ratios are calculated here from those numbers; nothing is estimated.',
+  'Defaults are built from the history: growth from recent revenue trends, margins and capital spending from recent years, tax from the company\'s own rate moving to the 25% US rate. Each box says exactly how its number was set. Change any of them.',
+  'The risk-free rate is today\'s 10-year Treasury yield. Beta and the market risk premium come from Professor Damodaran\'s data (NYU Stern), the source most analysts use; the debt spread comes from a credit rating estimated from interest coverage.',
+  'Each year: operating profit after tax, plus depreciation, minus capital spending and the cash tied up in working capital. All of it follows from the assumptions on the previous pages.',
+  'Each year\'s cash flow and the value after year 10 are discounted to today, then debt is subtracted and cash added (from the latest balance sheet) to get the value of the shares.',
+  'The same valuation re-run with the discount rate and long-run growth moved up and down, to show how much the answer depends on them.',
+];
+
+function PageSource({ page }) {
+  const text = PAGE_SOURCES[page];
+  if (!text) return null;
+  return (
+    <div className="mb-4 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-[12px] leading-snug text-slate-400">
+      <span className="font-semibold text-slate-300">Where this comes from: </span>{text}
+    </div>
+  );
+}
+
 function CompanyPage({ onLoad, loading, error, data, a, set, mode, setMode }) {
   const [ticker, setTicker] = useState('');
   const [q, setQ] = useState('');
@@ -638,6 +659,7 @@ function App() {
       <main className="flex-1 min-w-0 p-5 md:p-8 max-w-6xl">
         <div className="md:hidden mb-4"><select value={page} onChange={(e) => setPage(+e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
           {PAGES.map((p, i) => <option key={p} value={i} disabled={i > 0 && !ready}>{i + 1}. {p}</option>)}</select></div>
+        <PageSource page={page} />
         {body}
         {ready && (
           <div className="flex justify-between mt-8 pt-4 border-t border-slate-800 text-sm">
