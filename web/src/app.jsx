@@ -72,8 +72,10 @@ function NumInput({ label, value, onChange, kind = 'pct', dp = 2, suffix, prefix
           onFocus={() => setFocused(true)} onBlur={commit}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-          className={`w-full bg-transparent ${small ? 'px-2 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'} text-white outline-none font-mono text-right`} />
-        <span className="pr-2.5 text-slate-500 text-sm">{suffix ?? (kind === 'pct' ? '%' : '')}</span>
+          className={`w-full bg-transparent ${small ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'} text-white outline-none font-mono text-right`} />
+        {/* The small per-year boxes leave the unit to the larger box above
+            them: on a phone the "%" took the room the decimal needed. */}
+        {small ? <span className="pr-1" /> : <span className="pr-2.5 text-slate-500 text-sm">{suffix ?? (kind === 'pct' ? '%' : '')}</span>}
       </span>
       {hint && <Why>{hint}</Why>}
     </label>
@@ -606,7 +608,7 @@ function App() {
           </div>
         )}
       </nav>
-      <main className="flex-1 p-5 md:p-8 max-w-6xl">
+      <main className="flex-1 min-w-0 p-5 md:p-8 max-w-6xl">
         <div className="md:hidden mb-4"><select value={page} onChange={(e) => setPage(+e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
           {PAGES.map((p, i) => <option key={p} value={i} disabled={i > 0 && !ready}>{i + 1}. {p}</option>)}</select></div>
         {body}
