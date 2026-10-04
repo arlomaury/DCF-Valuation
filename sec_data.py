@@ -56,6 +56,14 @@ CONCEPTS = {
                          "InterestExpenseDebt", "InterestAndDebtExpense",
                          "InterestPaidNet"],
                         "first", "duration"),
+    # One-time write-downs inside operating income (goodwill, acquired
+    # intangibles, other assets). Excluded when setting the default margin,
+    # the way analysts normalize a base year. "max" because the tags overlap
+    # (AssetImpairmentCharges often includes the others).
+    "impairments": (["GoodwillImpairmentLoss", "ImpairmentOfIntangibleAssetsExcludingGoodwill",
+                     "ImpairmentOfIntangibleAssetsFinitelived",
+                     "ImpairmentOfIntangibleAssetsIndefinitelivedExcludingGoodwill",
+                     "GoodwillAndIntangibleAssetImpairment", "AssetImpairmentCharges"], "max", "duration"),
     "preTaxIncome": (["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
                       "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"],
                      "first", "duration"),
@@ -115,6 +123,13 @@ CONCEPTS = {
     "_financeLeaseCurrent": (["FinanceLeaseLiabilityCurrent"], "first", "instant"),
     "operatingLeaseLiability": (["OperatingLeaseLiability"], "first", "instant"),
     "minorityInterest": (["MinorityInterest"], "first", "instant"),
+    # Pension and retiree-medical plans: funded status (negative = deficit).
+    # A deficit is debt owed to retirees and comes off equity value, after tax.
+    "pensionFundedStatus": (["DefinedBenefitPlanFundedStatusOfPlan"], "first", "instant"),
+    # Stakes in companies that are not consolidated (Coca-Cola's bottlers).
+    # Their profits sit below operating income, so their value is added in
+    # the equity bridge or it would be lost.
+    "equityMethodInvestments": (["EquityMethodInvestments"], "first", "instant"),
     # Tax value of loss carryforwards, from the 10-K tax footnote (annual).
     # Kept as two keys because they are grossed up at different rates: the
     # domestic tag is the FEDERAL asset (losses x 21%), the total one mixes
@@ -126,6 +141,7 @@ CONCEPTS = {
 
 BALANCE_KEYS = ["_bsShares", "cash", "shortTermInvestments", "cashAndSTI", "longTermInvestments",
                 "minorityInterest", "preferredStock", "operatingLeaseLiability",
+                "pensionFundedStatus", "equityMethodInvestments",
                 "currentAssets", "currentLiabilities", "totalAssets",
                 "_debtCurrent", "_ltDebtCurrent", "_shortBorrowings", "_ltDebtNoncurrent",
                 "_ltDebtAndLeasesNoncurrent", "_ltDebtTotal", "_financeLease",
@@ -469,6 +485,7 @@ def parse_company_facts(raw):
         "aligned": aligned,
         "sources": sources,
         "derived": derived,
+        "fiscalYearEnd": (anchor.get("ends") or {}).get(years[0]),
         "latestBalance": latest,
         "shares": shares,
     }

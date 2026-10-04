@@ -285,3 +285,16 @@ def test_capex_tagged_as_other_productive_assets():
     facts["us-gaap"].pop("PaymentsToAcquirePropertyPlantAndEquipment")
     add(facts, "PaymentsToAcquireOtherProductiveAssets", "USD", [_dur(17011e6, "2025-12-31", "2026-02-15")])
     assert sd.extract_annual(facts, "capex")["values"][2025] == 17011e6
+
+
+def test_pension_status_stakes_impairments_and_year_end_are_read():
+    from demo_data import _inst
+    facts = demo_company()["facts"]
+    add(facts, "DefinedBenefitPlanFundedStatusOfPlan", "USD", [_inst(-4e8, "2025-12-31", "2026-02-15")])
+    add(facts, "EquityMethodInvestments", "USD", [_inst(9e8, "2025-12-31", "2026-02-15")])
+    add(facts, "GoodwillImpairmentLoss", "USD", [_dur(5e7, "2025-12-31", "2026-02-15")])
+    p = sd.parse_company_facts({"facts": facts})
+    lb = p["latestBalance"]["values"]
+    assert lb["pensionFundedStatus"] == -4e8 and lb["equityMethodInvestments"] == 9e8
+    assert p["aligned"]["impairments"][0] == 5e7
+    assert p["fiscalYearEnd"] == "2025-12-31"

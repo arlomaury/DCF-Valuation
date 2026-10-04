@@ -77,6 +77,7 @@
         ebitda: isNum(ebit) && isNum(da) ? ebit + da : null,
         revGrowth: isNum(rev) && isNum(prevRev) && prevRev > 0 ? rev / prevRev - 1 : null,
         ebitMargin: isNum(rev) && rev > 0 && isNum(ebit) ? ebit / rev : null,
+        impairment: isNum(get('impairments', i)) && get('impairments', i) > 0 ? get('impairments', i) : 0,
         daPct: isNum(rev) && rev > 0 && isNum(da) ? da / rev : null,
         capexPct: isNum(rev) && rev > 0 && isNum(capex) ? capex / rev : null,
         nwcPct: isNum(rev) && rev > 0 && isNum(nwc) ? nwc / rev : null,
@@ -204,11 +205,16 @@
 
     // Operating margin: start from the latest year; hold it if positive, else
     // converge to the industry's average margin.
-    const m3 = mean(h.slice(0, 3).map((r) => r.ebitMargin));
-    let m0 = isNum(latest.ebitMargin) ? latest.ebitMargin : (isNum(m3) ? m3 : 0.1);
-    if (isNum(latest.ebitMargin) && isNum(m3) && m3 > 0 && latest.ebitMargin > 0 && latest.ebitMargin < 0.5 * m3) {
+    // Margins before one-time write-downs (goodwill and asset impairments),
+    // the way analysts normalize a base year.
+    const normMargin = (r) => (isNum(r.ebitMargin) && isNum(r.revenue) && r.revenue > 0
+      ? r.ebitMargin + (r.impairment || 0) / r.revenue : r.ebitMargin);
+    const m3 = mean(h.slice(0, 3).map(normMargin));
+    const latestM = normMargin(latest);
+    let m0 = isNum(latestM) ? latestM : (isNum(m3) ? m3 : 0.1);
+    if (isNum(latestM) && isNum(m3) && m3 > 0 && latestM > 0 && latestM < 0.5 * m3) {
       m0 = m3;
-      why.ebitMargin = `Last year's margin (${pct(latest.ebitMargin)}) is under half the 3-year average, which usually means a one-off charge, so the 3-year average (${pct(m3)}) is used and held flat.`;
+      why.ebitMargin = `Last year's margin (${pct(latestM)}) is under half the 3-year average, which usually means a one-off charge, so the 3-year average (${pct(m3)}) is used and held flat.`;
     }
     let mT = m0;
     if (m0 <= 0) {
@@ -222,6 +228,8 @@
     }
     if (!why.ebitMargin) {
       why.ebitMargin = `Latest operating margin (${pct(m0)}) held flat - no expansion assumed.`
+        + (latest.impairment > 0 && isNum(latest.revenue) && latest.revenue > 0
+          ? ` It excludes ${(latest.impairment / 1e6).toLocaleString('en-US', { maximumFractionDigits: 0 })}M of one-time write-downs (reported margin ${pct(latest.ebitMargin)}).` : '')
         + (isNum(industry.operatingMargin) ? ` Industry average for reference: ${pct(industry.operatingMargin)}.` : '');
     }
 
@@ -279,6 +287,7 @@
       terminalBetaCap: STABLE_BETA_CAP, terminalBetaFloor: STABLE_BETA_FLOOR,
       ronic: null, terminalMethod: 'gordon', exitMultiple: null,
       midYear: true, addBackSBC: false, capexFade: true, includeLongTermInvestments: true,
+      stubPeriod: true, stubYears: round(stubYearsOf(fin), 4),
       // Cost of capital inputs
       riskFree: rf, erp: market.erp, marginalTax: tMarg,
       industry: data.industry, unleveredBeta: industry.unleveredBeta || 0.9,
@@ -294,8 +303,16 @@
       cash: cashLike(lb.cash, lb.shortTermInvestments, lb.cashAndSTI),
       longTermInvestments: lb.longTermInvestments || 0,
       minorityInterest: lb.minorityInterest || 0,
+      // An underfunded pension is debt owed to retirees; contributions to
+      // close it are tax-deductible, so it counts after tax.
+      pensionDeficit: isNum(lb.pensionFundedStatus) && lb.pensionFundedStatus < 0
+        ? Math.round(-lb.pensionFundedStatus * (1 - tMarg)) : 0,
+      // Only when EBIT is the reported operating income: a derived EBIT
+      // (pre-tax income + interest) already contains the equity income.
+      equityInvestments: (fin.derived || []).includes('operatingIncome') ? 0 : (lb.equityMethodInvestments || 0),
       preferredStock: lb.preferredStock || 0,
     };
+    why.stub = `Valued as of the latest balance sheet${fin.latestBalance && fin.latestBalance.date ? ` (${fin.latestBalance.date})` : ''}, ${(stubYearsOf(fin) * 12).toFixed(0)} months after the last fiscal year-end: that part of year 1 is already in the cash on that balance sheet, so only the rest of the year is counted and every later cash flow is that much closer.`;
     why.terminalGrowth = `Equal to the 10-year Treasury yield (${pct(rf)}), the market's estimate of long-run nominal growth in the economy, and the growth rate behind the equity risk premium used here. Never set it above the risk-free rate: no company can outgrow the economy forever.`;
     why.beta = `${industry.name || 'Market'} unlevered beta (${(a.unleveredBeta).toFixed(2)}, Damodaran ${market.dataDate}), re-levered at this company's market debt/equity.`;
     why.costOfDebt = rating.coverage == null
@@ -434,6 +451,20 @@
     return rows;
   }
 
+  /** Fraction of the first forecast year already elapsed at the valuation
+   *  date (0 when the stub is switched off). */
+  function stubOf(a) {
+    return a.stubPeriod === false || !isNum(a.stubYears) ? 0 : clamp(a.stubYears, 0, 0.99);
+  }
+
+  /** Years from the last fiscal year-end to the latest balance sheet. */
+  function stubYearsOf(fin) {
+    const fye = fin && fin.fiscalYearEnd, bs = fin && fin.latestBalance && fin.latestBalance.date;
+    if (!fye || !bs) return 0;
+    const d = (Date.parse(bs) - Date.parse(fye)) / (365.25 * 86400000);
+    return isNum(d) ? clamp(d, 0, 0.99) : 0;
+  }
+
   // ─── Valuation ──────────────────────────────────────────────────────────
   /**
    * Full valuation.  mode: 'unlevered' (FCFF at WACC, the default) or
@@ -494,13 +525,20 @@
     // middle of the year.  The perpetuity is a stream of such flows, so it is
     // discounted from n − 0.5; an exit multiple is a sale at the end of year n.
     const dfAt = (tt) => 1 / Math.pow(1 + r, tt);
+    // Valuation date = the latest balance sheet (the net debt and cash used
+    // below are from it), not the last fiscal year-end. The part of year 1
+    // already gone (the stub) is in that balance sheet's cash, so only the
+    // rest of year 1 is counted, and every period is that much closer.
+    const tau = stubOf(a);
     const pvRows = proj.map((p, i) => {
-      const tt = a.midYear ? i + 0.5 : i + 1;
-      return { ...p, period: tt, df: dfAt(tt), pv: p.fcf * dfAt(tt) };
+      const share = i === 0 ? 1 - tau : 1;
+      const tt = a.midYear ? (i === 0 ? (1 - tau) / 2 : i + 0.5 - tau) : i + 1 - tau;
+      return { ...p, period: tt, df: dfAt(tt), stubShare: share, pv: p.fcf * share * dfAt(tt) };
     });
+    const tGordon = (a.midYear ? n - 0.5 : n) - tau, tEnd = n - tau;
     const sumPV = pvRows.reduce((s, p) => s + p.pv, 0);
-    const pvGordon = tvGordon != null ? tvGordon * dfAt(a.midYear ? n - 0.5 : n) : null;
-    const pvExit = tvExit != null ? tvExit * dfAt(n) : null;
+    const pvGordon = tvGordon != null ? tvGordon * dfAt(tGordon) : null;
+    const pvExit = tvExit != null ? tvExit * dfAt(tEnd) : null;
     let pvTV;
     const method = a.terminalMethod || 'gordon';
     if (method === 'exit') pvTV = pvExit;
@@ -525,11 +563,12 @@
         pv += used * tT / Math.pow(1 + rT, k);
         left -= used;
       }
-      pvNolLeft = pv * dfAt(a.midYear ? n - 0.5 : n);
+      pvNolLeft = pv * dfAt(tGordon);
     }
 
-    const nonOperating = (a.cash || 0) + (a.includeLongTermInvestments ? (a.longTermInvestments || 0) : 0);
-    const claims = (a.minorityInterest || 0) + (a.preferredStock || 0);
+    const nonOperating = (a.cash || 0) + (a.includeLongTermInvestments ? (a.longTermInvestments || 0) : 0)
+      + (a.equityInvestments || 0);
+    const claims = (a.minorityInterest || 0) + (a.preferredStock || 0) + (a.pensionDeficit || 0);
     let ev, equity;
     if (mode === 'levered') {
       equity = sumPV + pvTV + pvNolLeft + nonOperating - claims;
@@ -546,14 +585,14 @@
     // that gives the same PV as the exit multiple (solved by bisection, since
     // the year-11 cash flow itself depends on g through reinvestment).
     const impliedExitMultiple = pvGordon != null && ebitdaN > 0
-      ? (pvGordon / dfAt(n) + (mode === 'levered' ? last.debt : 0)) / ebitdaN : null;
+      ? (pvGordon / dfAt(tEnd) + (mode === 'levered' ? last.debt : 0)) / ebitdaN : null;
     const gordonPV = (gg) => {
       const rr = clamp(gg / ronic, 0, 1);
       const nopat = ebitT * (1 + gg) * (1 - tT);
       const f = mode === 'levered'
         ? (ebitT * (1 + gg) - last.debt * coc.kdPre) * (1 - tT) - rr * nopat + gg * last.debt
         : nopat * (1 - rr);
-      return f / (rT - gg) * dfAt(a.midYear ? n - 0.5 : n);
+      return f / (rT - gg) * dfAt(tGordon);
     };
     let impliedGrowthFromExit = null;
     if (pvExit != null && pvExit > 0) {
@@ -566,6 +605,12 @@
 
     if (tvShare != null && tvShare > 0.85) warnings.push(`Terminal value is ${pct(tvShare)} of the total - the result depends mostly on the long-run assumptions.`);
     if (g > a.riskFree) warnings.push('Terminal growth is above the risk-free rate, which implies the company eventually outgrows the economy.');
+    // Sanity ranges professional reviewers check (Damodaran, Wall Street Prep).
+    if (r < a.riskFree) warnings.push(`The discount rate (${pct(r)}) is below the risk-free rate (${pct(a.riskFree)}): no equity investor accepts less than a Treasury.`);
+    if (r > 0.14) warnings.push(`The discount rate (${pct(r)}) is unusually high for a listed company (most US firms sit between about 5% and 10%). Check the beta and the debt spread.`);
+    if (isNum(a.ronic) && a.ronic - rT > 0.05) warnings.push(`New investment earns ${pct(a.ronic - rT)} above the cost of capital forever; even wide-moat companies rarely sustain more than a few points.`);
+    if (method === 'gordon' && isNum(impliedExitMultiple) && (impliedExitMultiple < 4 || impliedExitMultiple > 30))
+      warnings.push(`The perpetuity value implies ${impliedExitMultiple.toFixed(1)}× year-${n} EBITDA, outside the usual 4-30× range for listed companies. Cross-check the terminal assumptions.`);
     if (isNum(a.ronic) && a.ronic < rT - 0.0005 && g > 0) warnings.push('Return on new investment is below the cost of capital, so growth destroys value in the terminal period.');
     if (!(a.shares > 0)) warnings.push('Shares outstanding are missing - enter them on the Company page.');
     if (!(a.price > 0)) warnings.push('No share price was found - enter it on the Company page so the market capital weights and upside can be computed.');

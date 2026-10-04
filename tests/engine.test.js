@@ -390,3 +390,58 @@ test('terminal EBIT adds back amortization above capex (EBITA basis), and only t
   const ln = normal.proj[normal.proj.length - 1];
   close(normal.nopatNext, ln.ebit * 1.02 * 0.75, 1e-9);
 });
+
+test('stub period: valuing at a later balance-sheet date rolls value forward, net of the elapsed cash flow', () => {
+  const base = simpleAssumptions();                               // end-of-year discounting
+  const v0 = DCF.value(simpleFin(), base, 'unlevered');
+  const tau = 0.5;
+  const v1 = DCF.value(simpleFin(), { ...base, stubYears: tau }, 'unlevered');
+  const r = v0.discountRate, f1 = v0.proj[0].fcf;
+  close(v1.sumPV + v1.pvTV, Math.pow(1 + r, tau) * (v0.sumPV + v0.pvTV - tau * f1 / (1 + r)), 1e-9);
+  const off = DCF.value(simpleFin(), { ...base, stubYears: tau, stubPeriod: false }, 'unlevered');
+  close(off.enterpriseValue, v0.enterpriseValue, 1e-12);
+});
+
+test('stub period default is the time from fiscal year-end to the latest balance sheet', () => {
+  const fin = simpleFin();
+  fin.fiscalYearEnd = '2025-12-31'; fin.latestBalance = { date: '2026-06-30', values: {} };
+  const data = { financials: fin, market: { riskFree: { rate: 0.04 }, erp: 0.05, marginalTaxRate: 0.25, industries: [] },
+    quote: { price: 10 }, shares: { value: 100 } };
+  const { assumptions: a } = DCF.defaultAssumptions(data);
+  close(a.stubYears, 181 / 365.25, 1e-3);
+});
+
+test('equity bridge: unfunded pension after tax comes off, unconsolidated stakes go on', () => {
+  const base = simpleAssumptions();
+  const v0 = DCF.value(simpleFin(), base, 'unlevered');
+  const v1 = DCF.value(simpleFin(), { ...base, pensionDeficit: 75, equityInvestments: 200 }, 'unlevered');
+  close(v1.equityValue, v0.equityValue - 75 + 200, 1e-9);
+  close(v1.enterpriseValue, v0.enterpriseValue, 1e-12);
+});
+
+test('pension deficit and stakes are read from the balance sheet, stakes only with reported EBIT', () => {
+  const fin = simpleFin();
+  fin.latestBalance = { date: '2025-12-31', values: { pensionFundedStatus: -400, equityMethodInvestments: 900 } };
+  const mk = (f) => ({ financials: f, market: { riskFree: { rate: 0.04 }, erp: 0.05, marginalTaxRate: 0.25, industries: [] },
+    quote: { price: 10 }, shares: { value: 100 } });
+  const a = DCF.defaultAssumptions(mk(fin)).assumptions;
+  assert.strictEqual(a.pensionDeficit, 300);              // 400 × (1 − 25%)
+  assert.strictEqual(a.equityInvestments, 900);
+  const b = DCF.defaultAssumptions(mk({ ...fin, derived: ['operatingIncome'] })).assumptions;
+  assert.strictEqual(b.equityInvestments, 0);             // derived EBIT already holds that income
+});
+
+test('sanity warnings: discount rate below the Treasury, implausible terminal multiple', () => {
+  const v = DCF.value(simpleFin(), simpleAssumptions(), 'unlevered', 0.03);
+  assert.ok(v.warnings.some((w) => /below the risk-free/.test(w)));
+});
+
+test('default margin excludes one-time write-downs (normalized base year)', () => {
+  const fin = simpleFin();
+  fin.aligned.impairments = [50, 0];                        // a 50 write-down inside 200 of EBIT
+  const data = { financials: fin, market: { riskFree: { rate: 0.04 }, erp: 0.05, marginalTaxRate: 0.25, industries: [] },
+    quote: { price: 10 }, shares: { value: 100 } };
+  const { assumptions: a, why } = DCF.defaultAssumptions(data);
+  close(a.ebitMargin[0], 0.25, 1e-9);                       // (200 + 50) / 1000
+  assert.match(why.ebitMargin, /write-downs/);
+});

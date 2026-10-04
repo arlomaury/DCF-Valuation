@@ -351,6 +351,8 @@ function AssumptionsPage({ a, set, why, reset, years }) {
         <div className="mt-4 space-y-2">
           <Check label="Mid-year discounting" value={a.midYear} onChange={(v) => set({ midYear: v })}
             hint="Cash arrives through the year, not on 31 December, so each year is discounted from its midpoint." />
+          <Check label={`Value as of the latest balance sheet (stub period of ${((a.stubYears || 0) * 12).toFixed(0)} months)`} value={a.stubPeriod}
+            onChange={(v) => set({ stubPeriod: v })} hint={why.stub} />
           <Check label="Count long-term marketable securities as cash" value={a.includeLongTermInvestments} onChange={(v) => set({ includeLongTermInvestments: v })}
             hint="Non-operating investments add to equity value. Turn off if they are strategic stakes that are already in operating income." />
         </div>
@@ -482,15 +484,20 @@ function ValuationPage({ v, a, mode, data, implied }) {
   if (v.error) return <Warnings items={[v.error]} />;
   const up = v.upside;
   const lb = data.financials.latestBalance;
+  const extra = [
+    ...(a.pensionDeficit > 0 ? [['− Unfunded pension (after tax)', -a.pensionDeficit]] : []),
+    ...(a.equityInvestments > 0 ? [['+ Stakes in unconsolidated companies (book value)', a.equityInvestments]] : []),
+  ];
   const nolLine = v.pvNolLeft > 0 ? [[`+ Tax losses left after year 10 (${money(v.nolLeft)})`, v.pvNolLeft]] : [];
   const bridge = mode === 'levered' ? [
     ['PV of free cash flow to equity', v.sumPV], ['+ PV of terminal value', v.pvTV], ...nolLine,
     ['+ Cash & securities', a.cash], ...(a.includeLongTermInvestments ? [['+ Long-term investments', a.longTermInvestments]] : []),
-    ['− Minority interest', -a.minorityInterest], ['− Preferred stock', -a.preferredStock],
+    ['− Minority interest', -a.minorityInterest], ['− Preferred stock', -a.preferredStock], ...extra,
   ] : [
     ['PV of free cash flow, years 1–10', v.sumPV], ['+ PV of terminal value', v.pvTV], ...nolLine, ['= Enterprise value', v.enterpriseValue, true],
     ['− Debt (incl. finance leases)', -a.debt], ['− Minority interest', -a.minorityInterest], ['− Preferred stock', -a.preferredStock],
     ['+ Cash & short-term investments', a.cash], ...(a.includeLongTermInvestments ? [['+ Long-term investments', a.longTermInvestments]] : []),
+    ...extra,
   ];
   return (
     <div className="space-y-5">
