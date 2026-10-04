@@ -41,7 +41,7 @@ To try it without internet access or an email, run `python3 dcf_model.py --demo`
 | **Terminal value** | Perpetuity growth with value-driver reinvestment: FCF₁₁ = NOPAT₁₁ × (1 − g ÷ RONIC) | g is at most 2.5% and never above the risk-free rate. RONIC sits halfway between the company's ROIC and its terminal-period WACC, because excess returns fade. Growth has to be paid for with reinvestment, so it never shows up for free. An exit multiple is shown as a cross-check. |
 | **Terminal discount rate** | Stable-period beta | The levered beta is capped at 1.2 for the terminal value only, Damodaran's rule for a mature firm growing with the economy. A lower beta is kept. The explicit years use today's beta. |
 | **Discounting** | Mid-year convention | Each year's cash flow is discounted from mid-year. The perpetuity is discounted from n − 0.5, and an exit-multiple sale from the end of year n. |
-| **Cost of equity** | Rf + βL × ERP | Rf is the live 10-year Treasury yield. ERP is Damodaran's implied ERP for the S&P 500. The beta is the industry's unlevered beta, corrected for cash, then re-levered at the company's market D/E: βL = βu(1 + (1 − t)D/E). |
+| **Cost of equity** | Rf + βL × ERP | Rf is the live 10-year Treasury yield. ERP is Damodaran's implied ERP for the S&P 500 (January), brought up to date the way he updates it monthly: re-solved at today's S&P 500 level and Treasury yield. The beta is the industry's unlevered beta, corrected for cash, then re-levered at the company's market D/E: βL = βu(1 + (1 − t)D/E). |
 | **Cost of debt** | Rf + default spread | The spread comes from a synthetic rating based on interest coverage (EBIT ÷ interest), using Damodaran's tables. Large and small firms use separate tables. |
 | **WACC** | Market-value weights | Equity is price × diluted shares. Debt is current + long-term + finance leases. A target capital structure can be entered instead. |
 | **Equity bridge** | EV − debt − minority interest − preferred + cash & investments | Balance-sheet items come from the most recent 10-Q or 10-K, so they match today's share price. |
@@ -59,6 +59,10 @@ The valuation page flags problems as they come up: a terminal value above 85% of
 - **Debt is built from its parts.** Current debt + long-term debt + finance leases, without double-counting the current portion that `LongTermDebt` already includes.
 - **D&A also searches company-specific XBRL namespaces**, which some large filers use for their cash-flow D&A line.
 
+## Why many stocks show a large downside
+
+With the 10-year Treasury above 5%, a standard DCF says much of the large-cap market is expensive, and the gap is real rather than an arithmetic slip. Apple at about $333 has a free-cash-flow yield of about 2%. Justifying that price needs roughly 20% revenue growth every year for ten years, or a discount rate below the Treasury yield. The Valuation page shows this directly in a **What today's price implies** panel: the growth rate and the discount rate at which the model would agree with the market. Use it to judge whether the market or the forecast is the optimistic one.
+
 ## Data sources
 
 | Data | Source | Freshness |
@@ -66,7 +70,7 @@ The valuation page flags problems as they come up: a terminal value above 85% of
 | Financial statements | [SEC EDGAR XBRL company facts](https://www.sec.gov/edgar/sec-api-documentation) | Live, cached 6 hours |
 | Industry (SIC code) | SEC EDGAR submissions | Live, cached 7 days |
 | Risk-free rate | [US Treasury daily par yield curve](https://home.treasury.gov/resource-center/data-chart-center/interest-rates), FRED as fallback | Live, cached 6 hours |
-| Industry betas, margins, rating spreads, ERP | [Damodaran Online, NYU Stern](https://pages.stern.nyu.edu/~adamodar/) | January 2026 data set, in `market_data.py` |
+| Industry betas, margins, rating spreads, ERP | [Damodaran Online, NYU Stern](https://pages.stern.nyu.edu/~adamodar/) | January 2026 data set, in `market_data.py`. The ERP is updated live from the S&P 500 level (Cboe). |
 | Share price | yfinance (if installed) → Cboe delayed quotes → Yahoo Finance → Stooq | Up to 15 minutes delayed. Can also be entered by hand. |
 
 ## Security and privacy

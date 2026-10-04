@@ -431,10 +431,52 @@ def load_company(ticker):
     }
 
 
+def sp500_level():
+    """Latest S&P 500 level (Cboe delayed index quote), or None."""
+    def fetch():
+        raw = http_get("https://cdn-api.cboe.com/api/global/delayed_quotes/quotes/_SPX.json",
+                       {"User-Agent": UA_BROWSER, "Accept": "application/json"}, timeout=12, retries=1)
+        d = json.loads(raw).get("data") or {}
+        level = float(d.get("current_price") or d.get("close") or 0)
+        if not level > 0:
+            raise FetchError("no S&P 500 level")
+        return {"level": level, "date": date.today().isoformat()}
+    try:
+        return _cached_json("sp500.json", 6 * 3600, fetch)
+    except (FetchError, OSError, ValueError) as e:
+        print(f"  ⚠ S&P 500 level unavailable: {e}")
+        return None
+
+
+def equity_risk_premium(rf):
+    """Damodaran's January implied ERP, brought up to today's index level and
+    Treasury yield (see market_data.implied_erp_now). Falls back to the
+    January figure when the index level can't be fetched."""
+    anchor = md.ERP_ANCHOR
+    base = {"rate": md.IMPLIED_ERP,
+            "note": f"Damodaran's implied ERP for the S&P 500, {md.DATA_DATE} "
+                    f"(against a {anchor['rf'] * 100:.2f}% T-bond)."}
+    sp = sp500_level()
+    if not sp:
+        return base
+    years = (date.today() - date.fromisoformat(anchor["date"])).days / 365.25
+    erp = md.implied_erp_now(sp["level"], rf, years)
+    if erp is None:
+        return base
+    return {"rate": round(erp, 4),
+            "note": (f"Damodaran's implied ERP ({md.IMPLIED_ERP * 100:.2f}% on {md.DATA_DATE}) updated "
+                     f"the way he updates it monthly: re-solved at today's S&P 500 "
+                     f"({sp['level']:,.0f}) and 10-year Treasury ({rf * 100:.2f}%).")}
+
+
 def market_inputs(demo=False):
+    rf = md.FALLBACK_RISK_FREE if demo else risk_free_rate()
+    erp = {"rate": md.IMPLIED_ERP, "note": f"Damodaran's implied ERP for the S&P 500, {md.DATA_DATE}."} \
+        if demo else equity_risk_premium(rf["rate"])
     return {
-        "riskFree": md.FALLBACK_RISK_FREE if demo else risk_free_rate(),
-        "erp": md.IMPLIED_ERP,
+        "riskFree": rf,
+        "erp": erp["rate"],
+        "erpNote": erp["note"],
         "marginalTaxRate": md.MARGINAL_TAX_RATE,
         "dataDate": md.DATA_DATE,
         "industries": md.industry_table(),

@@ -15,6 +15,50 @@ DATA_DATE = "January 2026"
 # (Damodaran, "Data Update 2 for 2026"), against a 4.18% 10-year T-bond.
 IMPLIED_ERP = 0.0423
 
+# The same estimate's inputs, so it can be brought up to date the way
+# Damodaran updates it each month: hold the index's expected cash flows, roll
+# them forward, and re-solve for the premium at today's index level and
+# today's Treasury yield. (The result barely depends on GROWTH_5Y: 4%-12%
+# moves it by about 0.2 points.)
+ERP_ANCHOR = {"date": "2026-01-01", "sp500": 6845.5, "rf": 0.0418, "erp": IMPLIED_ERP,
+              "growth5": 0.08}
+
+
+def _index_value(cf0, g, rf, r, years=5):
+    """Value of the index: `years` of cash flows growing at g, then growing at
+    the risk-free rate forever (Damodaran's two-stage implied-ERP model)."""
+    v, cf = 0.0, cf0
+    for t in range(1, years + 1):
+        cf *= 1 + g
+        v += cf / (1 + r) ** t
+    return v + cf * (1 + rf) / (r - rf) / (1 + r) ** years
+
+
+def _solve(f, lo, hi):
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        if f(mid) > 0:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+def implied_erp_now(sp500, rf, years_since):
+    """Implied ERP at today's S&P 500 level and risk-free rate, or None if
+    the inputs are unusable or the answer falls outside a sane 2%-8% band."""
+    a = ERP_ANCHOR
+    if not (sp500 and sp500 > 0 and 0 < rf < 0.2 and 0 <= years_since < 2):
+        return None
+    g = a["growth5"]
+    cf0 = _solve(lambda c: a["sp500"] - _index_value(c, g, a["rf"], a["rf"] + a["erp"]), 1e-6, a["sp500"])
+    cf = cf0 * (1 + g) ** years_since
+    if _index_value(cf, g, rf, rf + 0.5) > sp500:      # no solution in range
+        return None
+    r = _solve(lambda x: _index_value(cf, g, rf, x) - sp500, rf + 1e-4, rf + 0.5)
+    erp = r - rf
+    return erp if 0.02 <= erp <= 0.08 else None
+
 # Long-run US marginal corporate tax rate (21% federal + state), the rate
 # Damodaran uses for US firms.  Used for the debt tax shield, for re-levering
 # beta, and as the tax rate the projection converges to.

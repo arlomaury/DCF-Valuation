@@ -548,6 +548,31 @@
   }
 
   /** Per-share value across discount rates (columns) and a second input (rows). */
+  /** Reverse DCF: what today's price implies. Holding every other input,
+   *  the constant revenue growth for the forecast years, and separately the
+   *  discount rate, at which the per-share value equals the share price.
+   *  Either is null when no value in a sane range gets there. */
+  function marketImplied(fin, a, mode = 'unlevered') {
+    if (!(a.price > 0) || !(a.shares > 0)) return null;
+    const target = a.price;
+    const ps = (aa, rate) => { const v = value(fin, aa, mode, rate); return v && !v.error ? v.perShare : null; };
+    const bisect = (f, lo, hi, increasing) => {
+      const flo = f(lo), fhi = f(hi);
+      if (flo == null || fhi == null) return null;
+      if (increasing ? !(flo <= target && target <= fhi) : !(fhi <= target && target <= flo)) return null;
+      for (let k = 0; k < 60; k++) {
+        const mid = (lo + hi) / 2, fm = f(mid);
+        if (fm == null) return null;
+        if ((fm < target) === increasing) lo = mid; else hi = mid;
+      }
+      return (lo + hi) / 2;
+    };
+    const n = a.years || PROJECTION_YEARS;
+    const growth = bisect((g) => ps({ ...a, revenueGrowth: Array(n).fill(g) }), -0.3, 0.8, true);
+    const rate = bisect((r) => ps(a, r), a.terminalGrowth + 0.006, 0.4, false);
+    return { growth, rate, years: n };
+  }
+
   function sensitivity(fin, a, mode = 'unlevered') {
     const baseV = value(fin, a, mode);
     if (!baseV || baseV.error) return null;
@@ -590,6 +615,6 @@
   }
 
   return { PROJECTION_YEARS, NOL_OFFSET_LIMIT, STABLE_BETA_CAP, historicalMetrics, costOfCapital,
-    terminalCostOfCapital, syntheticRating, defaultAssumptions, project, value, sensitivity, cocInputs,
+    terminalCostOfCapital, syntheticRating, defaultAssumptions, project, value, sensitivity, marketImplied, cocInputs,
     currentRating, _util: { median, mean, clamp, lerp, cashLike, taxWithNol } };
 });

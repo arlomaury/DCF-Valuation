@@ -345,3 +345,15 @@ test('terminal rate: sensitivity shifts keep the same terminal spread', () => {
   const v = DCF.value(simpleFin(), a, 'unlevered', 0.15);
   close(v.terminalRate, 0.15 - 0.02);
 });
+
+test('reverse DCF: the implied growth and rate reproduce the price', () => {
+  const a = simpleAssumptions();                      // constant 5% growth
+  const v = DCF.value(simpleFin(), a, 'unlevered');
+  const m = DCF.marketImplied(simpleFin(), { ...a, price: v.perShare }, 'unlevered');
+  close(m.growth, 0.05, 1e-6);
+  close(m.rate, v.discountRate, 1e-6);
+  // A price no input range can reach gives null, not a made-up number.
+  const far = DCF.marketImplied(simpleFin(), { ...a, price: v.perShare * 1e6 }, 'unlevered');
+  assert.strictEqual(far.growth, null);
+  assert.strictEqual(DCF.marketImplied(simpleFin(), { ...a, price: 0 }, 'unlevered'), null);
+});

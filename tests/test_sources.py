@@ -140,3 +140,28 @@ def test_new_holding_company_falls_back_to_predecessor_filings(fake_http, monkey
     monkeypatch.setattr(dcf_model, "PREDECESSORS", {})
     with pytest.raises(ValueError, match="holding company"):
         dcf_model.load_company("NEWCO")
+
+
+def test_erp_updated_to_todays_index_and_rate(fake_http, monkeypatch):
+    import market_data as md
+    fake_http["_SPX.json"] = json.dumps({"data": {"current_price": md.ERP_ANCHOR["sp500"]}})
+    monkeypatch.setattr(dcf_model, "date", type("D", (), {
+        "today": staticmethod(lambda: __import__("datetime").date(2026, 1, 1)),
+        "fromisoformat": staticmethod(__import__("datetime").date.fromisoformat)}))
+    e = dcf_model.equity_risk_premium(md.ERP_ANCHOR["rf"])
+    assert abs(e["rate"] - md.IMPLIED_ERP) < 1e-4                # same day, same inputs: same answer
+    assert "re-solved" in e["note"]
+
+
+def test_erp_falls_back_to_january_without_the_index(fake_http):
+    import market_data as md
+    e = dcf_model.equity_risk_premium(0.05)
+    assert e["rate"] == md.IMPLIED_ERP
+
+
+def test_implied_erp_moves_the_right_way():
+    import market_data as md
+    a = md.ERP_ANCHOR
+    assert md.implied_erp_now(a["sp500"] * 1.13, a["rf"], 0) < a["erp"]     # richer market, lower premium
+    assert md.implied_erp_now(a["sp500"] * 0.85, a["rf"], 0) > a["erp"]
+    assert md.implied_erp_now(0, a["rf"], 0) is None

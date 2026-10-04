@@ -380,7 +380,7 @@ function RatePage({ a, set, why, v, data, mode }) {
           <NumInput label="Risk-free rate (10-year Treasury)" value={a.riskFree} onChange={(v) => set({ riskFree: v })}
             hint={`${rf.source}, ${rf.date}.`} />
           <NumInput label="Equity risk premium" value={a.erp} onChange={(v) => set({ erp: v })}
-            hint={`Damodaran's implied ERP for the S&P 500, ${data.market.dataDate}. He updates it monthly.`} />
+            hint={data.market.erpNote || `Damodaran's implied ERP for the S&P 500, ${data.market.dataDate}.`} />
           <div>
             <span className="block text-[11px] font-medium text-slate-400 mb-1">Industry (for beta)</span>
             <select value={a.industry} onChange={(e) => pickIndustry(e.target.value)}
@@ -459,7 +459,23 @@ function CashFlowPage({ v, mode }) {
   );
 }
 
-function ValuationPage({ v, a, mode, data }) {
+function ImpliedCard({ implied, a, v }) {
+  if (!implied || (implied.growth == null && implied.rate == null)) return null;
+  const g1 = a.revenueGrowth[0], gn = a.revenueGrowth[a.revenueGrowth.length - 1];
+  return (
+    <Card title="What today's price implies" subtitle="A reverse DCF: hold every other input and solve for the one that makes the value equal the share price.">
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Stat label={`Revenue growth, every year for ${implied.years} years`} value={implied.growth == null ? 'out of range' : pct(implied.growth)}
+          sub={`Your forecast: ${pct(g1)} in year 1, fading to ${pct(gn)}`} tone="purple" />
+        <Stat label="Discount rate" value={implied.rate == null ? 'out of range' : pct(implied.rate, 2)}
+          sub={`Your forecast: ${pct(v.discountRate, 2)} · 10-year Treasury: ${pct(a.riskFree, 2)}`} tone="purple" />
+      </div>
+      <Why>A large gap between value and price usually means the market expects much more growth than the forecast, or accepts a much lower return, not that the arithmetic is off. If the implied discount rate is close to or below the Treasury yield, the price is hard to justify on cash flows alone at today's rates.</Why>
+    </Card>
+  );
+}
+
+function ValuationPage({ v, a, mode, data, implied }) {
   if (!v) return <Warnings items={[NO_REVENUE]} />;
   if (v.error) return <Warnings items={[v.error]} />;
   const up = v.upside;
@@ -488,6 +504,7 @@ function ValuationPage({ v, a, mode, data }) {
         data.shares?.needsCheck && 'The share count needs checking (see the Company page).',
         ...v.warnings,
       ].filter(Boolean)} />
+      <ImpliedCard implied={implied} a={a} v={v} />
       <div className="grid lg:grid-cols-2 gap-5">
         <Card title="From cash flows to value per share" subtitle={`Balance-sheet items as of ${lb?.date || 'the latest 10-K'}.`}>
           <div className="space-y-1.5 text-sm">
@@ -576,6 +593,7 @@ function App() {
   const history = useMemo(() => (data ? E.historicalMetrics(data.financials) : []), [data]);
   const v = useMemo(() => (data && a ? E.value(data.financials, a, mode) : null), [data, a, mode]);
   const s = useMemo(() => (data && a && page === 6 ? E.sensitivity(data.financials, a, mode) : null), [data, a, mode, page]);
+  const implied = useMemo(() => (data && a && page === 5 ? E.marketImplied(data.financials, a, mode) : null), [data, a, mode, page]);
   const years = v?.proj?.map((p) => p.year) || [];
 
   const ready = !!(data && a);
@@ -585,7 +603,7 @@ function App() {
     ready && <AssumptionsPage a={a} set={set} why={defaults.why} reset={reset} years={years} />,
     ready && <RatePage a={a} set={set} why={defaults.why} v={v} data={data} mode={mode} />,
     ready && <CashFlowPage v={v} mode={mode} />,
-    ready && <ValuationPage v={v} a={a} mode={mode} data={data} />,
+    ready && <ValuationPage v={v} a={a} mode={mode} data={data} implied={implied} />,
     ready && <SensitivityPage s={s} a={a} />,
   ][page];
 
