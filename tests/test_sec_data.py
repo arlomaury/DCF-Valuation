@@ -375,3 +375,22 @@ def test_old_balance_sheet_share_count_does_not_raise_stale_note():
     add(facts, "CommonStockSharesOutstanding", "shares", [_inst(1e9, "2025-12-31", "2026-02-01")])
     lb = sd.parse_company_facts({"facts": facts})["latestBalance"]
     assert "staleNote" not in lb
+
+
+def test_current_portion_from_maturity_table_when_not_tagged_on_balance_sheet():
+    # Caterpillar: no LongTermDebtCurrent; the current portion is only in the
+    # maturity schedule.
+    from demo_data import _inst
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2025-12-31", "2026-02-13")])
+    add(facts, "Assets", "USD", [_inst(900, "2025-12-31", "2026-02-13")])
+    add(facts, "LongTermDebtNoncurrent", "USD", [_inst(30696, "2025-12-31", "2026-02-13")])
+    add(facts, "ShortTermBorrowings", "USD", [_inst(5514, "2025-12-31", "2026-02-13")])
+    add(facts, "LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths", "USD", [_inst(7120, "2025-12-31", "2026-02-13")])
+    p = sd.parse_company_facts({"facts": facts})
+    assert p["aligned"]["totalDebt"][0] == 30696 + 5514 + 7120
+    assert p["latestBalance"]["values"]["totalDebt"] == 30696 + 5514 + 7120
+    # A balance-sheet tag, when present, wins over the maturity table.
+    add(facts, "LongTermDebtCurrent", "USD", [_inst(7000, "2025-12-31", "2026-02-13")])
+    p = sd.parse_company_facts({"facts": facts})
+    assert p["aligned"]["totalDebt"][0] == 30696 + 5514 + 7000

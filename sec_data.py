@@ -110,7 +110,10 @@ CONCEPTS = {
                              "AvailableForSaleSecuritiesDebtSecuritiesNoncurrent",
                              "LongTermInvestments", "DebtSecuritiesNoncurrent"], "first", "instant"),
     "_debtCurrent": (["DebtCurrent"], "first", "instant"),
-    "_ltDebtCurrent": (["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent"],
+    # Last resort: the debt-maturity table's "due within 12 months", which is
+    # the current portion. Caterpillar tags its ~$7B current portion only there.
+    "_ltDebtCurrent": (["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent",
+                        "LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths"],
                        "first", "instant"),
     "_shortBorrowings": (["ShortTermBorrowings", "CommercialPaper"], "first", "instant"),
     "_ltDebtNoncurrent": (["LongTermDebtNoncurrent"], "first", "instant"),
