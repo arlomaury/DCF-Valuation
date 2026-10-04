@@ -616,7 +616,7 @@ function App() {
             {page < PAGES.length - 1 && <button onClick={() => setPage(page + 1)} className="px-4 py-2 rounded-lg bg-blue-600/20 text-blue-300 hover:bg-blue-600/30">{PAGES[page + 1]} →</button>}
           </div>
         )}
-        <p className="text-[11px] text-slate-600 mt-8">For education and research. Not investment advice. Sources: SEC EDGAR, US Treasury, Damodaran Online (NYU Stern), Yahoo Finance / Stooq.</p>
+        <p className="text-[11px] text-slate-600 mt-8">For education and research. Not investment advice. Sources: SEC EDGAR, US Treasury, Damodaran Online (NYU Stern), Cboe / Yahoo Finance / Stooq.</p>
       </main>
     </div>
   );

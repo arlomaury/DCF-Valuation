@@ -8,7 +8,7 @@ endpoints as a standard WSGI application, so it can be put online:
     GET /api/search?q=...    company search
     GET /api/company?ticker= one company's filings, price and market inputs
 
-They only read public data (SEC EDGAR, Treasury, Yahoo/Stooq) and keep no user
+They only read public data (SEC EDGAR, Treasury, Cboe/Yahoo/Stooq) and keep no user
 state, so there is nothing to log in to and nothing to leak. SEC downloads
 are cached on the server, so repeat lookups don't reach SEC again.
 
