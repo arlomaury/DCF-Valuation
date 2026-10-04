@@ -559,6 +559,22 @@ def parse_company_facts(raw):
     }
 
 
+def _fix_scale(x, cover=None):
+    """Undo a share count tagged in millions instead of shares
+    (McDonald's tags 713.4 for 713.4 million weighted shares). Rescaled when
+    that brings it within 20% of the cover-page count, or, with no cover
+    count, when it is too small to be a listed company's share count."""
+    if x is None:
+        return None
+    # Millions only: a factor of 1,000 would also "fix" Berkshire's Class
+    # A-equivalent count (1/1,500 of the B shares), which is not mis-scaled.
+    if cover and 0.8 <= x * 1e6 / cover <= 1.2:
+        return x * 1e6
+    if not cover and x < 1e4:
+        return x * 1e6
+    return x
+
+
 def choose_share_count(parsed):
     """Pick the share count used for per-share value, with an explanation.
 
@@ -571,12 +587,12 @@ def choose_share_count(parsed):
     / basic weighted shares) accounts for options and RSUs."""
     a = parsed["aligned"]
     pos = lambda v: _is_num(v) and v > 0  # noqa: E731 - a negative or zero count is a tagging error
-    basic = next((v for v in a.get("basicShares", []) if pos(v)), None)
-    diluted = next((v for v in a.get("dilutedShares", []) if pos(v)), None)
-    bs = (parsed.get("latestBalance") or {}).get("values", {}).get("_bsShares")
-    bs = bs if pos(bs) else None
     cover_info = parsed.get("shares") or {}
     cover = cover_info.get("value")
+    basic = _fix_scale(next((v for v in a.get("basicShares", []) if pos(v)), None), cover)
+    diluted = _fix_scale(next((v for v in a.get("dilutedShares", []) if pos(v)), None), cover)
+    bs = (parsed.get("latestBalance") or {}).get("values", {}).get("_bsShares")
+    bs = _fix_scale(bs if pos(bs) else None, cover)
     refs = [r for r in (basic, bs) if r]
     agrees = lambda x: any(0.8 <= x / r <= 1.2 for r in refs)  # noqa: E731
     needs_check = False

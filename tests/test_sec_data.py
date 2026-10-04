@@ -450,3 +450,13 @@ def test_debt_parts_never_negative():
     vals = {"_ltDebtTotal": 5, "_ltDebtCurrent": 6}
     total, parts, _cur = sd.compose_debt(vals.get)
     assert total == 6 and min(parts.values()) >= 0
+
+
+def test_share_counts_tagged_in_millions_are_rescaled():
+    # McDonald's tags weighted shares as 713.4 (millions).
+    parsed = {"aligned": {"basicShares": [713.4], "dilutedShares": [716.4]},
+              "shares": {"value": 707641531, "classes": 1}}
+    s = sd.choose_share_count(parsed)
+    assert not s["needsCheck"] and s["value"] == pytest.approx(707641531 * 716.4 / 713.4)
+    parsed = {"aligned": {"basicShares": [713.4], "dilutedShares": [716.4]}, "shares": None}
+    assert sd.choose_share_count(parsed)["value"] == pytest.approx(716.4e6)
