@@ -365,3 +365,13 @@ def test_year_end_securities_tagged_only_in_a_later_10q_still_count():
     assert p["aligned"]["shortTermInvestments"] == [39, 34]
     assert p["aligned"]["cash"][0] == 10
     assert p["latestBalance"]["values"]["shortTermInvestments"] == 37
+
+
+def test_old_balance_sheet_share_count_does_not_raise_stale_note():
+    from demo_data import _inst
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2025-12-31", "2026-02-01")])
+    add(facts, "Assets", "USD", [_inst(500, "2025-12-31", "2026-02-01"), _inst(520, "2026-06-30", "2026-08-01", form="10-Q")])
+    add(facts, "CommonStockSharesOutstanding", "shares", [_inst(1e9, "2025-12-31", "2026-02-01")])
+    lb = sd.parse_company_facts({"facts": facts})["latestBalance"]
+    assert "staleNote" not in lb

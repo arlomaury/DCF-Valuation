@@ -485,7 +485,8 @@ def parse_company_facts(raw):
                 latest["sources"][key] = f'{v["tag"]} ({v["date"]})'
                 dates[key] = v["date"]
         total_debt, parts, _cur = compose_debt(lambda k: latest["values"].get(k), dates.get)
-        stale = sorted({d for k, d in dates.items() if d != bs_date and (k.startswith("_") or k in ("cash", "shortTermInvestments"))})
+        stale = sorted({d for k, d in dates.items() if d != bs_date and k != "_bsShares"
+                        and (k.startswith("_") or k in ("cash", "shortTermInvestments"))})
         if stale:
             latest["staleNote"] = ("Some balance-sheet items were not in the latest filing and come from "
                                    f"an earlier one ({', '.join(stale)}).")
