@@ -412,3 +412,23 @@ def test_item_blank_in_latest_10q_current_column_counts_as_zero():
     add(facts, "FinanceLeaseLiability", "USD", [_inst(12, "2026-02-01", "2026-03-18")])
     lb = sd.parse_company_facts({"facts": facts})["latestBalance"]
     assert lb["values"]["totalDebt"] == 390 + 12
+
+
+def test_dna_fallback_fills_missing_years_from_da_and_impairment_tag():
+    # Tesla: DepreciationDepletionAndAmortization until 2017, then only
+    # "Depreciation, amortization and impairment" (company namespace).
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2016-12-31", "2017-02-01"), _dur(200, "2025-12-31", "2026-01-29")])
+    add(facts, "DepreciationDepletionAndAmortization", "USD", [_dur(5, "2016-12-31", "2017-02-01")])
+    add(facts, "DepreciationAmortizationAndImpairment", "USD", [_dur(12, "2025-12-31", "2026-01-29")], ns="tsla")
+    add(facts, "AssetImpairmentCharges", "USD", [_dur(2, "2025-12-31", "2026-01-29")])
+    p = sd.parse_company_facts({"facts": facts})
+    assert p["aligned"]["dna"] == [10, 5]
+
+
+def test_negative_interest_expense_is_read_as_a_cost():
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2025-09-27", "2025-11-13")])
+    add(facts, "InterestExpense", "USD", [_dur(-18, "2025-09-27", "2025-11-13")])
+    p = sd.parse_company_facts({"facts": facts})
+    assert p["aligned"]["interestExpense"] == [18]

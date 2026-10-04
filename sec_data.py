@@ -78,6 +78,9 @@ CONCEPTS = {
              "*:DepreciationAmortizationAndOther"], "max", "duration"),
     "_depreciation": (["Depreciation", "DepreciationNonproduction"], "first", "duration"),
     "_amortization": (["AmortizationOfIntangibleAssets"], "first", "duration"),
+    # Tesla's cash-flow line since 2018 ("Depreciation, amortization and
+    # impairment"). Only a fallback, with impairments taken out.
+    "_dnaInclImpairment": (["*:DepreciationAmortizationAndImpairment"], "first", "duration"),
     "capex": (["PaymentsToAcquirePropertyPlantAndEquipment",
                "PaymentsToAcquireProductiveAssets",
                "PaymentsForCapitalImprovements",
@@ -440,14 +443,25 @@ def parse_company_facts(raw):
         if v[2] == "instant":
             series[k] = extract_annual(facts, k, fy_ends or None)
 
-    # D&A fallback: depreciation + amortization of intangibles.
-    if not series.get("dna"):
-        dep, amt = series.get("_depreciation"), series.get("_amortization")
-        if dep or amt:
-            yrs = set((dep or {}).get("values", {})) | set((amt or {}).get("values", {}))
-            vals = {y: ((dep or {}).get("values", {}).get(y) or 0) + ((amt or {}).get("values", {}).get(y) or 0)
-                    for y in yrs}
-            series["dna"] = {"values": vals, "tags": {y: "Depreciation+AmortizationOfIntangibleAssets" for y in yrs}}
+    # D&A fallbacks, year by year where the D&A tags are missing: depreciation
+    # + amortization of intangibles, else D&A-and-impairment less impairments.
+    vals_of = lambda k: (series.get(k) or {}).get("values", {})  # noqa: E731
+    dna = series.get("dna") or {"values": {}, "tags": {}}
+    dep, amt, dai, imp = (vals_of(k) for k in ("_depreciation", "_amortization", "_dnaInclImpairment", "impairments"))
+    for y in (set(dep) | set(amt) | set(dai)) - set(dna["values"]):
+        if y in dep or y in amt:
+            dna["values"][y] = (dep.get(y) or 0) + (amt.get(y) or 0)
+            dna["tags"][y] = "Depreciation+AmortizationOfIntangibleAssets"
+        elif dai.get(y, 0) > 0:
+            dna["values"][y] = dai[y] - min(max(imp.get(y) or 0, 0), dai[y])
+            dna["tags"][y] = "DepreciationAmortizationAndImpairment less impairments"
+    if dna["values"]:
+        series["dna"] = dna
+
+    # Interest expense is an expense element, but some filers (Disney) report
+    # it as a negative number; the sign carries no meaning there.
+    if series.get("interestExpense"):
+        series["interestExpense"]["values"] = {y: abs(v) for y, v in series["interestExpense"]["values"].items()}
 
     # EBIT fallback: pre-tax income + interest expense, marked as derived. Per
     # year, not only when the tag is absent altogether: some companies stop

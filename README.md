@@ -58,7 +58,8 @@ The valuation page flags problems as they come up: a terminal value above 85% of
 - **Restated values win.** Each year uses its most recently filed number.
 - **Year-end balances can come from a later 10-Q.** When a 10-K leaves an item untagged, the comparative column of the next 10-Q fills it (NVIDIA's fiscal-2026 securities). A 10-K figure always wins. An item the latest 10-K no longer lists, or that the latest 10-Q shows only in its year-end column, is treated as zero rather than carried over.
 - **Debt is built from its parts.** Current debt + long-term debt + finance leases, without double-counting the current portion that `LongTermDebt` already includes. When the balance sheet has no current-portion tag, the debt-maturity table's "due within 12 months" is used (Caterpillar).
-- **D&A also searches company-specific XBRL namespaces**, which some large filers use for their cash-flow D&A line.
+- **D&A also searches company-specific XBRL namespaces**, which some large filers use for their cash-flow D&A line. Years still missing fall back to depreciation + amortization, or to a "depreciation, amortization and impairment" line less impairments (Tesla).
+- **Interest expense is read as a cost whatever its sign.** Disney reports it as a negative number.
 
 ## Why many stocks show a large downside
 
