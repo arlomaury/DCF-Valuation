@@ -276,6 +276,7 @@ def test_debt_reported_only_as_one_including_current_figure():
         [_inst(131574e6, "2025-12-31", "2026-02-01")])
     p = sd.parse_company_facts({"facts": facts})
     assert p["aligned"]["totalDebt"][0] == 131574e6
+    assert p["latestBalance"]["values"]["totalDebt"] == 131574e6      # not zero on the latest balance sheet
 
 
 def test_capex_tagged_as_other_productive_assets():

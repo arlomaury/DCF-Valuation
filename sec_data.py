@@ -129,7 +129,7 @@ BALANCE_KEYS = ["_bsShares", "cash", "shortTermInvestments", "cashAndSTI", "long
                 "currentAssets", "currentLiabilities", "totalAssets",
                 "_debtCurrent", "_ltDebtCurrent", "_shortBorrowings", "_ltDebtNoncurrent",
                 "_ltDebtAndLeasesNoncurrent", "_ltDebtTotal", "_financeLease",
-                "_financeLeaseNoncurrent", "_financeLeaseCurrent"]
+                "_financeLeaseNoncurrent", "_financeLeaseCurrent", "_debtAndLeasesInclCurrent"]
 
 KNOWN_STANDARD_NS = {"us-gaap", "dei", "srt", "ifrs-full", "invest"}
 
