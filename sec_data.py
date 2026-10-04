@@ -102,11 +102,13 @@ CONCEPTS = {
              "first", "instant"),
     "shortTermInvestments": (["ShortTermInvestments", "MarketableSecuritiesCurrent",
                               "AvailableForSaleSecuritiesDebtSecuritiesCurrent",
-                              "AvailableForSaleSecuritiesCurrent"], "first", "instant"),
+                              "AvailableForSaleSecuritiesCurrent",
+                              # NVIDIA's tag since fiscal 2026.
+                              "DebtSecuritiesCurrent"], "first", "instant"),
     "cashAndSTI": (["CashCashEquivalentsAndShortTermInvestments"], "first", "instant"),
     "longTermInvestments": (["MarketableSecuritiesNoncurrent",
                              "AvailableForSaleSecuritiesDebtSecuritiesNoncurrent",
-                             "LongTermInvestments"], "first", "instant"),
+                             "LongTermInvestments", "DebtSecuritiesNoncurrent"], "first", "instant"),
     "_debtCurrent": (["DebtCurrent"], "first", "instant"),
     "_ltDebtCurrent": (["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent"],
                        "first", "instant"),
@@ -216,9 +218,14 @@ def _annual_by_year(entries, kind, fy_ends=None):
     dates; values dated anything else - e.g. a debt figure "as of" a date
     after year end, disclosed in a note - are ignored so they cannot replace
     the year-end balance."""
+    # A year-end balance can also come from the comparative column of a later
+    # 10-Q (NVIDIA tagged its fiscal 2026 securities only there), but a 10-K
+    # figure always wins over one.
+    forms = BALANCE_FORMS if kind == "instant" and fy_ends is not None else ANNUAL_FORMS
+    rank = lambda f: (f.get("form") in ANNUAL_FORMS, f.get("filed", ""), f.get("end", ""))  # noqa: E731
     out = {}
     for f in entries:
-        if f.get("form") not in ANNUAL_FORMS or not _is_num(f.get("val")) or not _valid_date(f.get("end")):
+        if f.get("form") not in forms or not _is_num(f.get("val")) or not _valid_date(f.get("end")):
             continue
         days = _period_days(f)
         if kind == "duration":
@@ -234,7 +241,7 @@ def _annual_by_year(entries, kind, fy_ends=None):
         except ValueError:
             continue
         prev = out.get(yr)
-        if prev is None or (f.get("filed", ""), f.get("end", "")) > (prev.get("filed", ""), prev.get("end", "")):
+        if prev is None or rank(f) > rank(prev):
             out[yr] = f
     return out
 

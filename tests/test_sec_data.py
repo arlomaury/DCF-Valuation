@@ -344,3 +344,24 @@ def test_share_count_ignores_negative_counts():
               "latestBalance": {"values": {"_bsShares": -1}}, "shares": None}
     s = sd.choose_share_count(parsed)
     assert s["value"] == pytest.approx(1.02e9)
+
+
+def test_year_end_securities_tagged_only_in_a_later_10q_still_count():
+    # NVIDIA: MarketableSecuritiesCurrent until fiscal 2025, then only
+    # DebtSecuritiesCurrent, and the fiscal-2026 year-end figure appears only
+    # as the comparative column of the next 10-Q.
+    from demo_data import _inst
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2025-01-26", "2025-02-26", start="2024-01-29"),
+                                   _dur(150, "2026-01-25", "2026-02-25", start="2025-01-27")])
+    add(facts, "Assets", "USD", [_inst(500, "2026-01-25", "2026-02-25"), _inst(520, "2026-04-26", "2026-05-20", form="10-Q")])
+    add(facts, "MarketableSecuritiesCurrent", "USD", [_inst(34, "2025-01-26", "2025-02-26")])
+    add(facts, "DebtSecuritiesCurrent", "USD", [_inst(39, "2026-01-25", "2026-05-20", form="10-Q"),
+                                                _inst(37, "2026-04-26", "2026-05-20", form="10-Q")])
+    # A 10-K figure beats a 10-Q comparative for the same date.
+    add(facts, "CashAndCashEquivalentsAtCarryingValue", "USD", [_inst(10, "2026-01-25", "2026-02-25"),
+                                                                _inst(11, "2026-01-25", "2026-05-20", form="10-Q")])
+    p = sd.parse_company_facts({"facts": facts})
+    assert p["aligned"]["shortTermInvestments"] == [39, 34]
+    assert p["aligned"]["cash"][0] == 10
+    assert p["latestBalance"]["values"]["shortTermInvestments"] == 37

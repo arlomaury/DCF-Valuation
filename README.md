@@ -56,6 +56,7 @@ The valuation page flags problems as they come up: a terminal value above 85% of
 - **52/53-week fiscal years** are labelled from the period end date minus 7 days. A year ending 2025-01-04 counts as fiscal 2024, so two years can't collide and drop one.
 - **Tag changes are merged year by year.** For example, a company that switched from `SalesRevenueNet` to `RevenueFromContractWithCustomer…` in 2018 keeps its full history.
 - **Restated values win.** Each year uses its most recently filed number.
+- **Year-end balances can come from a later 10-Q.** When a 10-K leaves an item untagged, the comparative column of the next 10-Q fills it (NVIDIA's fiscal-2026 securities). A 10-K figure always wins. An item the latest 10-K no longer lists is not carried over from older reports.
 - **Debt is built from its parts.** Current debt + long-term debt + finance leases, without double-counting the current portion that `LongTermDebt` already includes.
 - **D&A also searches company-specific XBRL namespaces**, which some large filers use for their cash-flow D&A line.
 
