@@ -22,6 +22,9 @@
   // Damodaran's rule of thumb for the stable-growth period: a mature firm's
   // beta should not exceed 1.2 (two-thirds of US firms sit in 0.8-1.2).
   const STABLE_BETA_CAP = 1.2;
+  // ...and floored at 0.8: a company growing with the economy forever carries
+  // close to market risk, from either side (Damodaran: stable betas 0.8-1.2).
+  const STABLE_BETA_FLOOR = 0.8;
   // Federal corporate rate, for grossing up a federal-only tax asset.
   const FEDERAL_TAX_RATE = 0.21;
 
@@ -148,10 +151,13 @@
    *  but a high beta is brought down to the stable-period cap, because a firm
    *  growing at the rate of the economy carries roughly market risk. An empty
    *  cap keeps today's beta. A low beta is left alone. */
-  function terminalCostOfCapital(inp, cap) {
+  function terminalCostOfCapital(inp, cap, floor) {
     const now = costOfCapital(inp);
-    if (!isNum(cap) || cap <= 0 || now.leveredBeta <= cap) return { ...now, betaCapped: false };
-    return { ...costOfCapital({ ...inp, betaOverride: cap }), betaCapped: true };
+    const hi = isNum(cap) && cap > 0 ? cap : Infinity;
+    const lo = isNum(floor) && floor > 0 ? Math.min(floor, hi) : -Infinity;
+    const beta = clamp(now.leveredBeta, lo, hi);
+    if (beta === now.leveredBeta) return { ...now, betaCapped: false };
+    return { ...costOfCapital({ ...inp, betaOverride: beta }), betaCapped: true };
   }
 
   // ─── Default assumptions ────────────────────────────────────────────────
@@ -177,10 +183,23 @@
     const k = Math.min(3, nums(revs).length - 1);
     const cagr = k >= 1 && revs[k] > 0 && revs[0] > 0 ? Math.pow(revs[0] / revs[k], 1 / k) - 1 : null;
     let g1 = isNum(yoy) && isNum(cagr) ? 0.5 * yoy + 0.5 * cagr : (isNum(yoy) ? yoy : (isNum(cagr) ? cagr : 0.05));
+    // When the 3-year trend and last year disagree by more than 10 points, the
+    // trend is measuring a one-off (Pfizer's COVID-vaccine peak in 2022, a
+    // spin-off, a pandemic slump) rather than the business today, so last
+    // year's growth is used on its own.
+    const distorted = isNum(yoy) && isNum(cagr) && Math.abs(yoy - cagr) > 0.10;
+    if (distorted) g1 = yoy;
     const g1Raw = g1;
     g1 = clamp(g1, -0.10, 0.40);
-    const gT = isNum(overrides.terminalGrowth) ? overrides.terminalGrowth : Math.min(0.025, rf);
-    why.revenueGrowth = `Year 1 = average of last year's growth (${pct(yoy)}) and the ${k}-year CAGR (${pct(cagr)})`
+    // Long-run growth equal to the risk-free rate, Damodaran's default: the
+    // long-term Treasury yield is the market's own estimate of nominal growth
+    // in the economy, and it is the growth rate his implied equity risk
+    // premium (used for the cost of equity) assumes for the market. Pairing
+    // that premium with a lower growth rate undervalues every company.
+    const gT = isNum(overrides.terminalGrowth) ? overrides.terminalGrowth : rf;
+    why.revenueGrowth = (distorted
+      ? `Year 1 = last year's growth (${pct(yoy)}); the ${k}-year CAGR (${pct(cagr)}) is more than 10 points away, so it reflects a one-off rather than the business today`
+      : `Year 1 = average of last year's growth (${pct(yoy)}) and the ${k}-year CAGR (${pct(cagr)})`)
       + (g1 !== g1Raw ? `, capped at ${pct(g1)}` : '') + `, fading in a straight line to the ${pct(gT)} terminal rate by year ${n}.`;
 
     // Operating margin: start from the latest year; hold it if positive, else
@@ -257,7 +276,7 @@
       daPct: round(daPct), capexPct: round(isNum(capexPct) ? capexPct : daPct), nwcPct: round(nwcPct),
       sbcPct: round(isNum(latest.sbcPct) ? latest.sbcPct : 0),
       terminalGrowth: gT, terminalTax: tMarg, startingNol: Math.round(startingNol),
-      terminalBetaCap: STABLE_BETA_CAP,
+      terminalBetaCap: STABLE_BETA_CAP, terminalBetaFloor: STABLE_BETA_FLOOR,
       ronic: null, terminalMethod: 'gordon', exitMultiple: null,
       midYear: true, addBackSBC: false, capexFade: true, includeLongTermInvestments: true,
       // Cost of capital inputs
@@ -277,20 +296,20 @@
       minorityInterest: lb.minorityInterest || 0,
       preferredStock: lb.preferredStock || 0,
     };
-    why.terminalGrowth = `At most 2.5% and never above the risk-free rate (${pct(rf)}): no company can outgrow the economy forever.`;
+    why.terminalGrowth = `Equal to the 10-year Treasury yield (${pct(rf)}), the market's estimate of long-run nominal growth in the economy, and the growth rate behind the equity risk premium used here. Never set it above the risk-free rate: no company can outgrow the economy forever.`;
     why.beta = `${industry.name || 'Market'} unlevered beta (${(a.unleveredBeta).toFixed(2)}, Damodaran ${market.dataDate}), re-levered at this company's market debt/equity.`;
     why.costOfDebt = rating.coverage == null
       ? (rating.assumed ? 'The company has debt but no interest expense was found in its filings, so an investment-grade BBB rating is assumed - check it.' : 'No interest expense and little or no debt, so rated AAA.')
       : `Interest coverage ${rating.coverage.toFixed(1)}× → synthetic rating ${rating.rating}, spread ${pct(rating.spread)} over the risk-free rate.`;
 
-    why.terminalBetaCap = `In the terminal period the levered beta is capped at ${STABLE_BETA_CAP.toFixed(1)}: a company growing with the economy carries about market risk (Damodaran's stable-growth rule). A beta already below the cap is kept. Clear the box to keep today's beta forever.`;
+    why.terminalBetaCap = `In the terminal period the levered beta is held between ${STABLE_BETA_FLOOR.toFixed(1)} and ${STABLE_BETA_CAP.toFixed(1)}: a company growing with the economy forever carries close to market risk (Damodaran's stable-growth rule). Clear a box to drop that limit.`;
 
     // Return on new investment in the terminal period: half-way between this
     // company's ROIC and the terminal cost of capital - competitive advantages
     // fade. Compared against the terminal rate, which is the rate the
     // terminal value is discounted at.
     const merged = { ...a, ...overrides };
-    const coc = terminalCostOfCapital(cocInputs(merged, latest), merged.terminalBetaCap);
+    const coc = terminalCostOfCapital(cocInputs(merged, latest), merged.terminalBetaCap, merged.terminalBetaFloor);
     const roic = mean(h.slice(0, 3).map((r) => r.roic));
     if (isNum(roic) && roic > coc.wacc) {
       a.ronic = round(coc.wacc + 0.5 * (Math.min(roic, 0.4) - coc.wacc));
@@ -352,7 +371,13 @@
     if (![g, ronic, m, tT, a.daPct, a.nwcPct].every(isNum) || ronic <= 0) return null;
     const nopatPct = Math.max(m, 0) * (1 - tT);
     const netCapex = clamp(g / ronic, 0, 1) * nopatPct - a.nwcPct * g / (1 + g);
-    return a.daPct + Math.max(netCapex, 0);
+    // Maintenance capex is D&A, except where D&A is well above what the
+    // company spends: that excess is amortization of acquired intangibles
+    // (a drug portfolio, customer lists), which is replaced by R&D or
+    // acquisitions, not by capital spending. Pfizer amortizes ~10% of
+    // revenue and spends ~4%; forcing capex up to 10% halved its cash flow.
+    const maintenance = isNum(a.capexPct) && a.capexPct > 0 ? Math.min(a.daPct, a.capexPct) : a.daPct;
+    return maintenance + Math.max(netCapex, 0);
   }
 
   function project(fin, a, mode, coc, rate) {
@@ -419,7 +444,7 @@
     const h = historicalMetrics(fin);
     const inp = cocInputs(a, h[0]);
     const coc = costOfCapital(inp);
-    const cocT = terminalCostOfCapital(inp, a.terminalBetaCap);
+    const cocT = terminalCostOfCapital(inp, a.terminalBetaCap, a.terminalBetaFloor);
     const pick = (c) => (mode === 'levered' ? c.ke : c.wacc);
     const r = isNum(discountOverride) ? discountOverride : pick(coc);
     // Terminal-period rate. The sensitivity tables shift the explicit-period
@@ -438,11 +463,19 @@
     // so growth is paid for by reinvestment instead of appearing for free.
     const ronic = isNum(a.ronic) && a.ronic > 0 ? a.ronic : rT;
     const reinvestRate = clamp(g / ronic, 0, 1);
-    const nopatNext = last.ebit * (1 + g) * (1 - tT);
+    // Terminal EBIT on an EBITA basis for the part of D&A above what the
+    // company spends on capital: amortization of acquired intangibles is a
+    // non-cash charge that runs off, and the perpetuity formula would
+    // otherwise both keep it in EBIT and drop the matching add-back. Zero for
+    // companies whose capex covers their D&A.
+    const amortExcess = a.ebitaTerminal === false || !(isNum(a.capexPct) && a.capexPct > 0 && last.da > 0)
+      ? 0 : Math.max(0, last.da - last.revenue * Math.min(a.daPct, a.capexPct));
+    const ebitT = last.ebit + amortExcess;
+    const nopatNext = ebitT * (1 + g) * (1 - tT);
     let fcfNext;
     if (mode === 'levered') {
       const interestNext = last.debt * coc.kdPre;
-      const niNext = (last.ebit * (1 + g) - interestNext) * (1 - tT);
+      const niNext = (ebitT * (1 + g) - interestNext) * (1 - tT);
       fcfNext = niNext - reinvestRate * nopatNext + g * last.debt;
     } else {
       fcfNext = nopatNext * (1 - reinvestRate);
@@ -516,9 +549,9 @@
       ? (pvGordon / dfAt(n) + (mode === 'levered' ? last.debt : 0)) / ebitdaN : null;
     const gordonPV = (gg) => {
       const rr = clamp(gg / ronic, 0, 1);
-      const nopat = last.ebit * (1 + gg) * (1 - tT);
+      const nopat = ebitT * (1 + gg) * (1 - tT);
       const f = mode === 'levered'
-        ? (last.ebit * (1 + gg) - last.debt * coc.kdPre) * (1 - tT) - rr * nopat + gg * last.debt
+        ? (ebitT * (1 + gg) - last.debt * coc.kdPre) * (1 - tT) - rr * nopat + gg * last.debt
         : nopat * (1 - rr);
       return f / (rT - gg) * dfAt(a.midYear ? n - 0.5 : n);
     };
@@ -619,7 +652,7 @@
     return { tax: (taxable - used) * rate, used, nol: nol - used };
   }
 
-  return { PROJECTION_YEARS, NOL_OFFSET_LIMIT, STABLE_BETA_CAP, historicalMetrics, costOfCapital,
+  return { PROJECTION_YEARS, NOL_OFFSET_LIMIT, STABLE_BETA_CAP, STABLE_BETA_FLOOR, historicalMetrics, costOfCapital,
     terminalCostOfCapital, syntheticRating, defaultAssumptions, project, value, sensitivity, marketImplied, cocInputs,
     currentRating, _util: { median, mean, clamp, lerp, cashLike, taxWithNol } };
 });

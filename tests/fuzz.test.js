@@ -59,7 +59,10 @@ for (let it = 0; it < 600; it++) {
       if (!v) { if (Number.isFinite(ali.revenue[0]) && ali.revenue[0] > 0) problems.push(['null value with revenue', it]); continue; }
       if (v.error) { (global.errs = global.errs || {})[v.error.slice(0,40)] = ((global.errs||{})[v.error.slice(0,40)]||0)+1; continue; } global.ok=(global.ok||0)+1;
       if (!(v.pvNolLeft >= 0) || !Number.isFinite(v.pvNolLeft)) problems.push(['pvNolLeft', v.pvNolLeft, it]);
-      if (v.terminalRate > v.discountRate + 1e-12 && a.terminalBetaCap != null) problems.push(['terminal rate above today', it]);
+      // The terminal beta is held inside [floor, cap] (Damodaran's stable range).
+      const bT = v.cocTerminal && v.cocTerminal.leveredBeta;
+      if (Number.isFinite(bT) && a.terminalBetaCap != null && bT > a.terminalBetaCap + 1e-9) problems.push(['terminal beta above cap', it]);
+      if (Number.isFinite(bT) && a.terminalBetaFloor != null && bT < Math.min(a.terminalBetaFloor, a.terminalBetaCap ?? Infinity) - 1e-9) problems.push(['terminal beta below floor', it]);
       if (v.proj.some((p) => !(p.nolEnd >= 0) || !(p.nolUsed >= 0) || p.taxes < -1e-9)) problems.push(['nol/taxes', mode, it]);
       for (const k of ['enterpriseValue', 'equityValue', 'sumPV', 'pvTV', 'discountRate', 'terminalRate'])
         if (!Number.isFinite(v[k])) problems.push(['non-finite', mode, method, k, it]);

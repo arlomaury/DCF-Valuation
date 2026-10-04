@@ -164,7 +164,8 @@ test('defaults for the demo company are sensible and explained', () => {
   const data = demoData();
   const { assumptions: a, why } = DCF.defaultAssumptions(data);
   close(a.revenueGrowth[0], 0.10, 1e-3);                // steady 10% grower
-  close(a.revenueGrowth[9], 0.025, 1e-9);                // fades to terminal growth
+  close(a.terminalGrowth, data.market.riskFree.rate, 1e-12); // long-run growth = risk-free rate
+  close(a.revenueGrowth[9], a.terminalGrowth, 1e-9);     // fades to terminal growth
   close(a.ebitMargin[0], 0.16, 1e-9);                    // latest margin, held flat
   close(a.taxRate[0], 0.21, 1e-3);                       // effective
   close(a.taxRate[9], 0.25, 1e-9);                       // converges to marginal
@@ -356,4 +357,36 @@ test('reverse DCF: the implied growth and rate reproduce the price', () => {
   const far = DCF.marketImplied(simpleFin(), { ...a, price: v.perShare * 1e6 }, 'unlevered');
   assert.strictEqual(far.growth, null);
   assert.strictEqual(DCF.marketImplied(simpleFin(), { ...a, price: 0 }, 'unlevered'), null);
+});
+
+test('terminal beta is held in the 0.8-1.2 stable range from both sides', () => {
+  const low = DCF.value(simpleFin(), simpleAssumptions({ unleveredBeta: 0.3, terminalBetaCap: 1.2, terminalBetaFloor: 0.8 }), 'unlevered');
+  close(low.cocTerminal.leveredBeta, 0.8, 1e-9);
+  assert.ok(low.terminalRate > low.discountRate);
+  const off = DCF.value(simpleFin(), simpleAssumptions({ unleveredBeta: 0.3, terminalBetaCap: 1.2, terminalBetaFloor: null }), 'unlevered');
+  close(off.terminalRate, off.discountRate, 1e-12);
+});
+
+test('a 3-year trend distorted by a one-off is not extrapolated', () => {
+  const fin = simpleFin();
+  fin.years = [2025, 2024, 2023, 2022];
+  fin.aligned.revenue = [626, 636, 596, 1012];         // Pfizer-like: COVID peak three years back
+  fin.aligned.operatingIncome = [100, 100, 100, 100];
+  const data = { financials: fin, market: { riskFree: { rate: 0.05 }, erp: 0.04, marginalTaxRate: 0.25, industries: [] },
+    quote: { price: 10 }, shares: { value: 100 } };
+  const { assumptions: a, why } = DCF.defaultAssumptions(data);
+  close(a.revenueGrowth[0], 626 / 636 - 1, 1e-3);        // last year's growth, not -15%
+  assert.match(why.revenueGrowth, /one-off/);
+});
+
+test('terminal EBIT adds back amortization above capex (EBITA basis), and only that', () => {
+  const heavy = simpleAssumptions({ daPct: 0.10, capexPct: 0.04, capexFade: true });
+  const v = DCF.value(simpleFin(), heavy, 'unlevered');
+  const last = v.proj[v.proj.length - 1];
+  close(v.nopatNext, (last.ebit + last.da - last.revenue * 0.04) * 1.02 * 0.75, 1e-9);
+  const off = DCF.value(simpleFin(), { ...heavy, ebitaTerminal: false }, 'unlevered');
+  close(off.nopatNext, last.ebit * 1.02 * 0.75, 1e-9);
+  const normal = DCF.value(simpleFin(), simpleAssumptions(), 'unlevered');   // capex 6% > D&A 5%
+  const ln = normal.proj[normal.proj.length - 1];
+  close(normal.nopatNext, ln.ebit * 1.02 * 0.75, 1e-9);
 });

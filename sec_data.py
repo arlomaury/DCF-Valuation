@@ -73,7 +73,9 @@ CONCEPTS = {
     "capex": (["PaymentsToAcquirePropertyPlantAndEquipment",
                "PaymentsToAcquireProductiveAssets",
                "PaymentsForCapitalImprovements",
-               "PaymentsToAcquireOtherPropertyPlantAndEquipment"], "first", "duration"),
+               "PaymentsToAcquireOtherPropertyPlantAndEquipment",
+               # Verizon's capital spending since 2019.
+               "PaymentsToAcquireOtherProductiveAssets"], "first", "duration"),
     # Assets acquired with new finance leases: non-cash, but economically capex
     # (the matching liability is counted as debt below).
     "financeLeaseAdditions": (["RightOfUseAssetObtainedInExchangeForFinanceLeaseLiability"],
@@ -104,6 +106,10 @@ CONCEPTS = {
     "_ltDebtNoncurrent": (["LongTermDebtNoncurrent"], "first", "instant"),
     "_ltDebtAndLeasesNoncurrent": (["LongTermDebtAndCapitalLeaseObligations"], "first", "instant"),
     "_ltDebtTotal": (["LongTermDebt"], "first", "instant"),
+    # Current and noncurrent debt and finance leases in one figure. General
+    # Motors reports its debt only this way; without it GM showed no debt.
+    "_debtAndLeasesInclCurrent": (["LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"],
+                                  "first", "instant"),
     "_financeLease": (["FinanceLeaseLiability"], "first", "instant"),
     "_financeLeaseNoncurrent": (["FinanceLeaseLiabilityNoncurrent"], "first", "instant"),
     "_financeLeaseCurrent": (["FinanceLeaseLiabilityCurrent"], "first", "instant"),
@@ -339,6 +345,11 @@ def compose_debt(get, date_of=None):
             # LongTermDebt includes its current portion, which is already
             # counted in `cur` above whenever it was reported.
             nonc = total_ltd - (get("_ltDebtCurrent") or 0)
+    if nonc is None:
+        incl = get("_debtAndLeasesInclCurrent")
+        if incl is not None:
+            nonc = incl - (cur or 0)
+            leases_inside = True
     if nonc is not None:
         parts["Long-term debt" + (" (incl. finance leases)" if leases_inside else "")] = nonc
     # Finance leases are debt; operating leases are left in operating costs.

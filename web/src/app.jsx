@@ -336,6 +336,8 @@ function AssumptionsPage({ a, set, why, reset, years }) {
           <NumInput label="Terminal tax rate" value={a.terminalTax} onChange={(v) => set({ terminalTax: v })} hint="Marginal rate: the long-run tax a profitable US company pays." />
           <NumInput label="Terminal beta cap (optional)" kind="num" suffix="" dp={2} optional value={a.terminalBetaCap}
             onChange={(v) => set({ terminalBetaCap: isNum(v) && v > 0 ? v : null })} hint={why.terminalBetaCap} />
+          <NumInput label="Terminal beta floor (optional)" kind="num" suffix="" dp={2} optional value={a.terminalBetaFloor}
+            onChange={(v) => set({ terminalBetaFloor: isNum(v) && v > 0 ? v : null })} hint={why.terminalBetaCap} />
         </div>
         <div className="mt-4 grid sm:grid-cols-2 gap-4 items-start">
           <div>

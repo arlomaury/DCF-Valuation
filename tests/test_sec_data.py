@@ -262,3 +262,25 @@ def test_loss_carryforward_falls_back_to_total():
     add(raw["facts"], "DeferredTaxAssetsOperatingLossCarryforwards", "USD", [_inst(90e6, "2025-12-31", "2026-02-15")])
     p = sd.parse_company_facts(raw)
     assert p["aligned"]["nolDTA"][0] == pytest.approx(90e6)
+
+
+def test_debt_reported_only_as_one_including_current_figure():
+    """General Motors files its debt only as LongTermDebtAndCapitalLeaseObligations-
+    IncludingCurrentMaturities; it used to come out as zero debt."""
+    from demo_data import _inst
+    facts = demo_company()["facts"]
+    g = facts["us-gaap"]
+    for k in [k for k in g if "Debt" in k or "Borrowings" in k or "CommercialPaper" in k or "FinanceLease" in k]:
+        g.pop(k)
+    add(facts, "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities", "USD",
+        [_inst(131574e6, "2025-12-31", "2026-02-01")])
+    p = sd.parse_company_facts({"facts": facts})
+    assert p["aligned"]["totalDebt"][0] == 131574e6
+
+
+def test_capex_tagged_as_other_productive_assets():
+    """Verizon's capital spending since 2019."""
+    facts = demo_company()["facts"]
+    facts["us-gaap"].pop("PaymentsToAcquirePropertyPlantAndEquipment")
+    add(facts, "PaymentsToAcquireOtherProductiveAssets", "USD", [_dur(17011e6, "2025-12-31", "2026-02-15")])
+    assert sd.extract_annual(facts, "capex")["values"][2025] == 17011e6
