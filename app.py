@@ -78,6 +78,24 @@ def app(environ, start_response):
             return _static(start_response, path)
         except (ValueError, OSError):            # e.g. a NUL byte in the path
             return _json(start_response, {"error": "not found"}, 404)
+    if path.startswith("/api/tagscan/"):              # TEMPORARY diagnostic, removed after use
+        parts = path.split("/")
+        if len(parts) == 5 and dcf_model.TICKER_RE.match(parts[3].upper()) and parts[4].isalpha() and len(parts[4]) <= 30:
+            try:
+                m = dcf_model.find_company(parts[3].upper())
+                facts = dcf_model.company_facts(m["cik_str"])["facts"]
+                out = {}
+                for ns, concepts in facts.items():
+                    for name, c in concepts.items():
+                        if parts[4].lower() in name.lower():
+                            vals = [e for u in c.get("units", {}).values() for e in u if e.get("form") == "10-K"]
+                            vals.sort(key=lambda e: (e.get("end", ""), e.get("filed", "")))
+                            if vals:
+                                out[f"{ns}:{name}"] = [vals[-1].get("end"), vals[-1].get("val")]
+                return _json(start_response, out)
+            except Exception as e:
+                return _json(start_response, {"error": str(e)}, 502)
+        return _json(start_response, {"error": "bad"}, 400)
     if path.startswith("/api/company/"):              # /api/company/AAPL works too
         params["ticker"] = [urllib.parse.unquote(path[len("/api/company/"):])]
         path = "/api/company"
