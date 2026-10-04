@@ -36,6 +36,16 @@ for (let it = 0; it < 600; it++) {
   if (rnd() < 0.4) a.startingNol = rev0 * rnd() * 3;
   a.terminalBetaCap = pick([1.2, 1.2, null, 0.6, 2.0]);
   if (rnd() < 0.3) a.unleveredBeta = 0.5 + rnd() * 1.5;
+  // Every user-facing override and toggle, not just the defaults.
+  if (rnd() < 0.2) a.targetDebtWeight = rnd() * 0.8;
+  if (rnd() < 0.15) a.costOfDebtOverride = 0.02 + rnd() * 0.12;
+  if (rnd() < 0.15) a.betaOverride = 0.3 + rnd() * 2;
+  if (rnd() < 0.3) a.midYear = false;
+  if (rnd() < 0.3) a.capexFade = false;
+  if (rnd() < 0.2) a.addBackSBC = true;
+  if (rnd() < 0.2) a.includeLongTermInvestments = false;
+  if (rnd() < 0.15) { a.autoSpread = false; a.spread = rnd() * 0.1; }
+  if (rnd() < 0.1) a.terminalGrowth = -0.01 + rnd() * 0.04;
   if (!Number.isFinite(a.startingNol) || a.startingNol < 0) problems.push(['bad startingNol', a.startingNol, it]);
   for (const k of ['revenueGrowth', 'ebitMargin', 'taxRate']) if (a[k].some((x) => !Number.isFinite(x))) problems.push(['non-finite default', k, it]);
   for (const k of ['daPct', 'capexPct', 'nwcPct', 'terminalGrowth', 'ronic', 'exitMultiple', 'unleveredBeta', 'spread', 'debt', 'cash'])
