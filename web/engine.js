@@ -339,6 +339,7 @@
         ? fin.ebitIncludesEquityIncome : (fin.derived || []).includes('operatingIncome'))
         ? 0 : (lb.equityMethodInvestments || 0),
       preferredStock: lb.preferredStock || 0,
+      insuranceReserves: isNum(lb.insuranceReserves) && lb.insuranceReserves > 0 ? lb.insuranceReserves : 0,
     };
     why.stub = `Valued as of the latest balance sheet${fin.latestBalance && fin.latestBalance.date ? ` (${fin.latestBalance.date})` : ''}, ${(stubYearsOf(fin) * 12).toFixed(0)} months after the last fiscal year-end: that part of year 1 is already in the cash on that balance sheet, so only the rest of the year is counted and every later cash flow is that much closer.`;
     why.terminalGrowth = `Equal to the 10-year Treasury yield (${pct(rf)}), Damodaran's default: it is the market's estimate of long-run nominal growth in the economy, and the growth rate behind the equity risk premium used here. Never set it above the risk-free rate: no company can outgrow the economy forever. Many sell-side models use 2-4% instead (type it here to compare); growth only adds value when new investment earns more than the cost of capital.`;
@@ -596,7 +597,13 @@
 
     const nonOperating = (a.cash || 0) + (a.includeLongTermInvestments ? (a.longTermInvestments || 0) : 0)
       + (a.equityInvestments || 0);
-    const claims = (a.minorityInterest || 0) + (a.preferredStock || 0) + (a.pensionDeficit || 0);
+    // Long-term investments that back insurance reserves (an industrial
+    // company's run-off insurer) are not the shareholders' to take: when the
+    // investments are counted, the reserves they back are subtracted, up to
+    // the investments' value.
+    const reservesBacked = a.includeLongTermInvestments
+      ? Math.min(a.insuranceReserves || 0, a.longTermInvestments || 0) : 0;
+    const claims = (a.minorityInterest || 0) + (a.preferredStock || 0) + (a.pensionDeficit || 0) + reservesBacked;
     let ev, equity;
     if (mode === 'levered') {
       equity = sumPV + pvTV + pvNolLeft + nonOperating - claims;
@@ -654,7 +661,7 @@
       tvGordon, tvExit, pvGordon, pvExit, pvTV, terminalMethod: method, pvNolLeft, nolLeft,
       fcfNext, nopatNext, reinvestRate, ronic,
       enterpriseValue: ev, equityValue: equity, perShare, upside,
-      nonOperating, claims, debt: a.debt || 0, tvShare,
+      nonOperating, claims, reservesBacked, debt: a.debt || 0, tvShare,
       impliedExitMultiple, impliedGrowthFromExit, warnings,
     };
   }

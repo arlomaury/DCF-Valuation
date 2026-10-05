@@ -392,7 +392,7 @@ function AssumptionsPage({ a, set, why, reset, years }) {
           {a.stubYears > 0 && <Check label={`Value as of the latest balance sheet (stub period of ${(a.stubYears * 12).toFixed(0)} months)`} value={a.stubPeriod}
             onChange={(v) => set({ stubPeriod: v })} hint={why.stub} />}
           <Check label="Count long-term marketable securities as cash" value={a.includeLongTermInvestments} onChange={(v) => set({ includeLongTermInvestments: v })}
-            hint="Non-operating investments add to equity value. Turn off if they are strategic stakes that are already in operating income." />
+            hint="Non-operating investments add to equity value. Turn off if they are strategic stakes that are already in operating income. Any insurance reserves they back (an industrial company's run-off insurer) are subtracted with them." />
         </div>
       </Card>
     </div>
@@ -525,6 +525,7 @@ function ValuationPage({ v, a, mode, data, implied }) {
   const extra = [
     ...(a.pensionDeficit > 0 ? [['− Unfunded pension (after tax)', -a.pensionDeficit]] : []),
     ...(a.equityInvestments > 0 ? [['+ Stakes in unconsolidated companies (book value)', a.equityInvestments]] : []),
+    ...(v.reservesBacked > 0 ? [['− Insurance reserves those investments back', -v.reservesBacked]] : []),
   ];
   const nolLine = v.pvNolLeft > 0 ? [[`+ Tax losses left after year 10 (${money(v.nolLeft)})`, v.pvNolLeft]] : [];
   const bridge = mode === 'levered' ? [

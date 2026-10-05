@@ -478,3 +478,13 @@ def test_retiree_plan_liability_from_balance_sheet_when_no_total_funded_status()
     add(facts, "PensionAndOtherPostretirementDefinedBenefitPlansLiabilitiesNoncurrent", "USD",
         [_inst(44, "2025-12-31", "2026-02-01")])
     assert sd.parse_company_facts({"facts": facts})["latestBalance"]["values"]["retireeLiability"] == 44
+
+
+def test_insurance_reserves_read_from_latest_balance_sheet():
+    from demo_data import _inst
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2025-12-31", "2026-02-01")])
+    add(facts, "Assets", "USD", [_inst(900, "2025-12-31", "2026-02-01"), _inst(950, "2026-06-30", "2026-07-25", form="10-Q")])
+    add(facts, "LiabilityForFuturePolicyBenefits", "USD", [_inst(354, "2025-12-31", "2026-02-01"),
+                                                          _inst(348, "2026-06-30", "2026-07-25", form="10-Q")])
+    assert sd.parse_company_facts({"facts": facts})["latestBalance"]["values"]["insuranceReserves"] == 348

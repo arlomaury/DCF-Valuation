@@ -116,6 +116,7 @@ Only run `scripts/build_web.sh` (needs Node 18+) after editing the UI. The compi
 - Share classes with different economics, such as Berkshire's A and B, may need the share count entered by hand. The app falls back to weighted-average shares when the cover-page count looks inconsistent.
 - A few companies report debt only by business segment (Ford's automotive and Ford Credit debt) or under their own labels (Deere's long-term borrowings), so the filings show only part of it. The Company page warns when interest expense is far above what the debt found could cost; enter total debt there.
 - The pension deficit is read from the total funded-status tag, or, where a company files that only plan by plan, from the underfunded plans' liability on its balance sheet (pension plus retiree medical). A company that reports neither shows none; check the pension note in its 10-K.
+- Long-term investments that back an industrial company's run-off insurance reserves (GE Aerospace) are netted against those reserves rather than counted as cash.
 - Operating leases stay in operating costs, which is consistent with US GAAP EBIT. They aren't capitalized as debt.
 - Damodaran's tables are updated each January. Update `market_data.py` to refresh them.
 

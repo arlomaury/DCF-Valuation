@@ -526,3 +526,22 @@ test('high discount-rate warning moves with the risk-free rate', () => {
   assert.ok(hit(0.15));
   assert.match(DCF.value(simpleFin(), a, 'unlevered', 0.15).warnings.find((w) => /unusually high/.test(w)), /7% and 12%/);
 });
+
+test('investments backing insurance reserves are not counted as free cash', () => {
+  // GE Aerospace: ~38B of long-term investments behind ~35B of run-off
+  // insurance reserves.
+  const a = simpleAssumptions({ longTermInvestments: 380, insuranceReserves: 350 });
+  const on = DCF.value(simpleFin(), a, 'unlevered');
+  const none = DCF.value(simpleFin(), { ...a, insuranceReserves: 0 }, 'unlevered');
+  close(none.equityValue - on.equityValue, 350);
+  close(on.reservesBacked, 350);
+  // Reserves beyond the investments are not subtracted here; investments
+  // left out take their reserves out with them.
+  close(DCF.value(simpleFin(), { ...a, insuranceReserves: 500 }, 'unlevered').reservesBacked, 380);
+  const off = DCF.value(simpleFin(), { ...a, includeLongTermInvestments: false }, 'unlevered');
+  close(off.reservesBacked, 0);
+  close(off.equityValue, none.equityValue - 380);
+  // Equity mode bridges the same way.
+  const lev = DCF.value(simpleFin(), a, 'levered'), levNone = DCF.value(simpleFin(), { ...a, insuranceReserves: 0 }, 'levered');
+  close(levNone.equityValue - lev.equityValue, 350);
+});

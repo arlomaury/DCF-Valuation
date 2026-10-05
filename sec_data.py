@@ -142,6 +142,12 @@ CONCEPTS = {
     "_pensionLiab": (["PensionAndOtherPostretirementDefinedBenefitPlansLiabilitiesNoncurrent",
                       "DefinedBenefitPensionPlanLiabilitiesNoncurrent"], "first", "instant"),
     "_opebLiab": (["OtherPostretirementDefinedBenefitPlanLiabilitiesNoncurrent"], "first", "instant"),
+    # Insurance reserves of an industrial company's run-off insurer (GE
+    # Aerospace holds ~$38B of investments against ~$35B of these). The
+    # investments are not free cash while they back these liabilities.
+    "insuranceReserves": (["LiabilityForFuturePolicyBenefits",
+                           "LiabilityForFuturePolicyBenefitsAndUnpaidClaimsAndClaimsAdjustmentExpense"],
+                          "first", "instant"),
     # Stakes in companies that are not consolidated (Coca-Cola's bottlers).
     # Their profits sit below operating income, so their value is added in
     # the equity bridge or it would be lost.
@@ -162,7 +168,7 @@ BALANCE_KEYS = ["_bsShares", "cash", "shortTermInvestments", "cashAndSTI", "long
                 "_debtCurrent", "_ltDebtCurrent", "_shortBorrowings", "_ltDebtNoncurrent",
                 "_ltDebtAndLeasesNoncurrent", "_ltDebtTotal", "_financeLease",
                 "_financeLeaseNoncurrent", "_financeLeaseCurrent", "_debtAndLeasesInclCurrent",
-                "_pensionLiab", "_opebLiab"]
+                "_pensionLiab", "_opebLiab", "insuranceReserves"]
 
 KNOWN_STANDARD_NS = {"us-gaap", "dei", "srt", "ifrs-full", "invest"}
 
