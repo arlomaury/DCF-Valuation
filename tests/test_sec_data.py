@@ -488,3 +488,24 @@ def test_insurance_reserves_read_from_latest_balance_sheet():
     add(facts, "LiabilityForFuturePolicyBenefits", "USD", [_inst(354, "2025-12-31", "2026-02-01"),
                                                           _inst(348, "2026-06-30", "2026-07-25", form="10-Q")])
     assert sd.parse_company_facts({"facts": facts})["latestBalance"]["values"]["insuranceReserves"] == 348
+
+
+def test_stock_split_since_last_annual_report_uses_cover_page():
+    # Booking: 25-for-1 in April 2026. The 10-K counts are pre-split.
+    parsed = {"aligned": {"basicShares": [32.6e6], "dilutedShares": [32.8e6]},
+              "shares": {"value": 32.4e6 * 25, "classes": 1}}
+    s = sd.choose_share_count(parsed)
+    assert s["value"] == pytest.approx(32.4e6 * 25 * 32.8 / 32.6)
+    assert "25-for-1" in s["basis"] and not s["needsCheck"]
+    # A reverse split the other way round.
+    parsed = {"aligned": {"basicShares": [500e6]}, "shares": {"value": 50e6, "classes": 1}}
+    assert "1-for-10" in sd.choose_share_count(parsed)["basis"]
+    # A missing share class is not a split: 5.8B against 12.2B is no clean ratio.
+    parsed = {"aligned": {"basicShares": [12.2e9]}, "shares": {"value": 5.8e9, "classes": 1}}
+    assert sd.choose_share_count(parsed)["needsCheck"]
+
+
+def test_half_the_shares_on_the_cover_is_a_missing_class_not_a_reverse_split():
+    parsed = {"aligned": {"basicShares": [2.0e9]}, "shares": {"value": 1.0e9, "classes": 1}}
+    s = sd.choose_share_count(parsed)
+    assert s["needsCheck"] and s["value"] == pytest.approx(2.0e9)

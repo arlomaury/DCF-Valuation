@@ -583,6 +583,24 @@ def parse_company_facts(raw):
     }
 
 
+# Split ratios companies actually use, forward and reverse.
+_SPLITS = (2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 30, 40, 50, 100, 1.5)
+
+
+def _split_ratio(cover, refs):
+    """The stock split that turns the annual share counts into the cover-page
+    count, if one does to within 3%; else None."""
+    for r in refs:
+        ratio = cover / r
+        for k in _SPLITS:
+            # Reverse splits only from 1-for-4: a cover page showing half the
+            # annual count is far more often a share class left off it.
+            for cand in ((k, 1 / k) if k >= 4 else (k,)):
+                if abs(ratio / cand - 1) <= 0.03:
+                    return cand
+    return None
+
+
 def _fix_scale(x, cover=None):
     """Undo a share count tagged in millions instead of shares
     (McDonald's tags 713.4 for 713.4 million weighted shares). Rescaled when
@@ -620,6 +638,19 @@ def choose_share_count(parsed):
     refs = [r for r in (basic, bs) if r]
     agrees = lambda x: any(0.8 <= x / r <= 1.2 for r in refs)  # noqa: E731
     needs_check = False
+    split = _split_ratio(cover, refs) if cover and refs and not agrees(cover) else None
+    if split:
+        # A stock split since the last annual report (Booking's 25-for-1 in
+        # April 2026): the cover page is already post-split, the annual counts
+        # are not. Using the annual count made every share worth 25 times its
+        # value. The cover page is right; the dilution ratio is unaffected.
+        factor = min(diluted / basic, 1.10) if basic and diluted and diluted >= basic else 1.0
+        word = f"{split:g}-for-1" if split >= 1 else f"1-for-{1 / split:g}"
+        note = ["cover-page shares outstanding (after a " + word + " stock split since the last annual report)"]
+        if factor > 1.0:
+            note.append(f"× {factor:.3f} dilution (diluted ÷ basic weighted shares)")
+        return {"value": cover * factor, "dilutionFactor": factor, "basis": " ".join(note),
+                "needsCheck": False, "split": split}
     if cover and (not refs or agrees(cover)):
         base, note = cover, ["cover-page shares outstanding"
                              + (f" ({cover_info.get('classes')} share classes summed)" if cover_info.get("classes", 1) > 1 else "")]
