@@ -562,6 +562,11 @@ def parse_company_facts(raw):
             latest["values"].pop(k)
 
     shares = shares_outstanding(facts)
+    # A cover-page count from years ago is not a share count for today: Visa
+    # last tagged a total in 2010 (it now files one per share class), and
+    # that 2010 figure valued the company at a quarter of its size.
+    if shares and bs_date and _valid_date(shares.get("date")) and (_d(bs_date) - _d(shares["date"])).days > 400:
+        shares = None
     # Whether the latest year's EBIT already contains income from equity-method
     # stakes: only when it was derived from a pre-tax income figure that
     # includes that income (the second pre-tax tag excludes it). The engine

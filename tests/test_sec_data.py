@@ -509,3 +509,13 @@ def test_half_the_shares_on_the_cover_is_a_missing_class_not_a_reverse_split():
     parsed = {"aligned": {"basicShares": [2.0e9]}, "shares": {"value": 1.0e9, "classes": 1}}
     s = sd.choose_share_count(parsed)
     assert s["needsCheck"] and s["value"] == pytest.approx(2.0e9)
+
+
+def test_years_old_cover_page_share_count_is_ignored():
+    from demo_data import _inst
+    facts = {"dei": {}}
+    add(facts, "Revenues", "USD", [_dur(100, "2025-09-30", "2025-11-10")])
+    add(facts, "Assets", "USD", [_inst(900, "2026-03-31", "2026-04-28", form="10-Q")])
+    add(facts, "EntityCommonStockSharesOutstanding", "shares",
+        [{"val": 469280842, "end": "2010-01-27", "form": "10-Q", "filed": "2010-02-03", "accn": "old"}], ns="dei")
+    assert sd.parse_company_facts({"facts": facts})["shares"] is None
