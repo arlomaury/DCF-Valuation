@@ -519,3 +519,22 @@ def test_years_old_cover_page_share_count_is_ignored():
     add(facts, "EntityCommonStockSharesOutstanding", "shares",
         [{"val": 469280842, "end": "2010-01-27", "form": "10-Q", "filed": "2010-02-03", "accn": "old"}], ns="dei")
     assert sd.parse_company_facts({"facts": facts})["shares"] is None
+
+
+def test_revenue_tag_that_changes_meaning_does_not_break_the_series():
+    # Mastercard: contract-revenue tag = gross revenue (before rebates) for
+    # 2020-21, net from 2022; "Revenues" net throughout.
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(v, f"{y}-12-31", f"{y+1}-02-10") for y, v in
+                                   [(2020, 15.3), (2021, 18.9), (2022, 22.2), (2023, 25.1)]])
+    add(facts, "RevenueFromContractWithCustomerExcludingAssessedTax", "USD",
+        [_dur(v, f"{y}-12-31", f"{y+1}-02-10") for y, v in [(2020, 23.6), (2021, 29.8), (2022, 22.2), (2023, 25.1)]])
+    assert sd.extract_annual(facts, "revenue")["values"] == {2023: 25.1, 2022: 22.2, 2021: 18.9, 2020: 15.3}
+
+
+def test_nested_revenue_tags_keep_the_total_even_while_revenue_falls():
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(v, f"{y}-12-31", f"{y+1}-02-10") for y, v in [(2022, 120), (2023, 110), (2024, 100)]])
+    add(facts, "RevenueFromContractWithCustomerExcludingAssessedTax", "USD",
+        [_dur(v, f"{y}-12-31", f"{y+1}-02-10") for y, v in [(2022, 106), (2023, 97), (2024, 88)]])
+    assert sd.extract_annual(facts, "revenue")["values"] == {2024: 100, 2023: 110, 2022: 120}

@@ -23,6 +23,7 @@ Design notes - each of these fixed a real mis-valuation:
 from __future__ import annotations
 
 import json
+import math
 from datetime import date, timedelta
 
 ANNUAL_FORMS = {"10-K", "10-K/A", "10-KT", "10-KT/A"}
@@ -267,6 +268,23 @@ def _annual_by_year(entries, kind, fy_ends=None):
     return out
 
 
+def _continue_series(cands, newer_val, newer_tag, newer_all):
+    """Pick an older year's revenue when its tags disagree.
+
+    Keep the tag the newer year used while the tags keep the same relation to
+    each other (a total and its contract-revenue part, say). If that relation
+    breaks, one tag changed meaning - Mastercard's contract-revenue tag was
+    gross revenue before customer rebates for 2020-21 and net afterwards - so
+    take the value that continues the series."""
+    old_all = {t: v for _p, t, v in cands}
+    if newer_tag in old_all and newer_all.get(newer_tag):
+        stable = all(abs((old_all[t] / old_all[newer_tag]) / (newer_all[t] / newer_all[newer_tag]) - 1) < 0.10
+                     for t in old_all if t != newer_tag and newer_all.get(t))
+        if stable:
+            return next(c for c in cands if c[1] == newer_tag)
+    return min(cands, key=lambda c: (abs(math.log(c[2] / newer_val)), -c[2]))
+
+
 def extract_annual(facts, key, fy_ends=None):
     """Return {'values': {year: val}, 'tags': {year: tag}, 'ends': {year: date}} or None."""
     tags, combine, kind = CONCEPTS[key]
@@ -280,16 +298,29 @@ def extract_annual(facts, key, fy_ends=None):
     if not per_year:
         return None
     values, used = {}, {}
-    for yr, cands in per_year.items():
+    newer = None                       # (value, tag, {tag: value}) of the next newer year
+    for yr in sorted(per_year, reverse=True):
+        cands = per_year[yr]
         if key == "revenue" and any(t == "RevenueFromContractWithCustomerExcludingAssessedTax" for _p, t, _v in cands):
             # Excise / sales taxes collected for the government are not the
             # company's revenue; never let the tax-inclusive figure win on size.
             cands = [c for c in cands if c[1] != "RevenueFromContractWithCustomerIncludingAssessedTax"]
         if combine == "max":
             prio, tag, val = max(cands, key=lambda c: (c[2], -c[0]))
+            # When the revenue tags disagree by more than 10% in an older year,
+            # take the one that continues the series. Mastercard tagged GROSS
+            # revenue (before customer rebates, $29.8B) as well as net revenue
+            # ($18.9B) for 2021, and the larger number made 2021-22 look like a
+            # 25% collapse. Nested tags (a total and its contract-revenue part)
+            # differ every year by a similar share, so they still pick the total.
+            pos = [c for c in cands if c[2] > 0]
+            if (key == "revenue" and newer and newer[0] > 0 and len(pos) > 1
+                    and max(c[2] for c in pos) > 1.10 * min(c[2] for c in pos)):
+                prio, tag, val = _continue_series(pos, *newer)
         else:
             prio, tag, val = min(cands, key=lambda c: c[0])
         values[yr], used[yr] = val, tag
+        newer = (val, tag, {t: v for _p, t, v in cands if _is_num(v)})
     return {"values": values, "tags": used, "ends": ends}
 
 
