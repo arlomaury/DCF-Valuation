@@ -460,3 +460,21 @@ def test_share_counts_tagged_in_millions_are_rescaled():
     assert not s["needsCheck"] and s["value"] == pytest.approx(707641531 * 716.4 / 713.4)
     parsed = {"aligned": {"basicShares": [713.4], "dilutedShares": [716.4]}, "shares": None}
     assert sd.choose_share_count(parsed)["value"] == pytest.approx(716.4e6)
+
+
+def test_retiree_plan_liability_from_balance_sheet_when_no_total_funded_status():
+    # Lockheed / Procter & Gamble: no total funded-status tag, but the
+    # underfunded plans sit on the balance sheet as noncurrent liabilities.
+    from demo_data import _inst
+    facts = {}
+    add(facts, "Revenues", "USD", [_dur(100, "2025-12-31", "2026-02-01")])
+    add(facts, "Assets", "USD", [_inst(900, "2025-12-31", "2026-02-01"), _inst(950, "2026-06-28", "2026-07-25", form="10-Q")])
+    add(facts, "DefinedBenefitPensionPlanLiabilitiesNoncurrent", "USD", [_inst(39, "2025-12-31", "2026-02-01")])
+    add(facts, "OtherPostretirementDefinedBenefitPlanLiabilitiesNoncurrent", "USD", [_inst(6, "2025-12-31", "2026-02-01")])
+    lb = sd.parse_company_facts({"facts": facts})["latestBalance"]
+    assert lb["values"]["retireeLiability"] == 45
+    assert "staleNote" not in lb                  # annual-only plan figures are expected
+    # The combined tag already includes retiree medical: not added twice.
+    add(facts, "PensionAndOtherPostretirementDefinedBenefitPlansLiabilitiesNoncurrent", "USD",
+        [_inst(44, "2025-12-31", "2026-02-01")])
+    assert sd.parse_company_facts({"facts": facts})["latestBalance"]["values"]["retireeLiability"] == 44

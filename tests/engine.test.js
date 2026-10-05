@@ -508,3 +508,13 @@ test('cyclical industries: mid-cycle margin and long-run growth, not the latest 
   close(flat.assumptions.ebitMargin[0], 0.08, 1e-4);
   assert.doesNotMatch(flat.why.ebitMargin, /cyclical/);
 });
+
+test('pension deficit falls back to the balance-sheet plan liability, after tax', () => {
+  const mk = (vals) => ({ financials: { ...simpleFin(), latestBalance: { values: vals } },
+    market: { riskFree: { rate: 0.04 }, erp: 0.05, marginalTaxRate: 0.25, industries: [] },
+    quote: { price: 10 }, shares: { value: 100 } });
+  close(DCF.defaultAssumptions(mk({ retireeLiability: 40 })).assumptions.pensionDeficit, 30);
+  // A total funded status, when filed, wins - including a surplus (no deficit).
+  close(DCF.defaultAssumptions(mk({ retireeLiability: 40, pensionFundedStatus: -20 })).assumptions.pensionDeficit, 15);
+  close(DCF.defaultAssumptions(mk({ retireeLiability: 40, pensionFundedStatus: 5 })).assumptions.pensionDeficit, 0);
+});

@@ -326,8 +326,12 @@
       minorityInterest: lb.minorityInterest || 0,
       // An underfunded pension is debt owed to retirees; contributions to
       // close it are tax-deductible, so it counts after tax.
-      pensionDeficit: isNum(lb.pensionFundedStatus) && lb.pensionFundedStatus < 0
-        ? Math.round(-lb.pensionFundedStatus * (1 - tMarg)) : 0,
+      // The total funded status when filed; otherwise the underfunded plans'
+      // liability on the balance sheet (most companies file funded status
+      // only plan by plan).
+      pensionDeficit: isNum(lb.pensionFundedStatus)
+        ? (lb.pensionFundedStatus < 0 ? Math.round(-lb.pensionFundedStatus * (1 - tMarg)) : 0)
+        : (isNum(lb.retireeLiability) && lb.retireeLiability > 0 ? Math.round(lb.retireeLiability * (1 - tMarg)) : 0),
       // Skipped only when the latest year's EBIT was derived from a pre-tax
       // income figure that already contains the stakes' income. Older payloads
       // without that flag fall back to "any derived EBIT".

@@ -135,6 +135,13 @@ CONCEPTS = {
     # Pension and retiree-medical plans: funded status (negative = deficit).
     # A deficit is debt owed to retirees and comes off equity value, after tax.
     "pensionFundedStatus": (["DefinedBenefitPlanFundedStatusOfPlan"], "first", "instant"),
+    # Most companies tag funded status only per plan (pension / retiree
+    # medical), which this reader cannot see, but put the underfunded plans on
+    # the balance sheet as a liability (Lockheed, Procter & Gamble). The
+    # combined tag first; else pension and retiree-medical separately.
+    "_pensionLiab": (["PensionAndOtherPostretirementDefinedBenefitPlansLiabilitiesNoncurrent",
+                      "DefinedBenefitPensionPlanLiabilitiesNoncurrent"], "first", "instant"),
+    "_opebLiab": (["OtherPostretirementDefinedBenefitPlanLiabilitiesNoncurrent"], "first", "instant"),
     # Stakes in companies that are not consolidated (Coca-Cola's bottlers).
     # Their profits sit below operating income, so their value is added in
     # the equity bridge or it would be lost.
@@ -154,7 +161,8 @@ BALANCE_KEYS = ["_bsShares", "cash", "shortTermInvestments", "cashAndSTI", "long
                 "currentAssets", "currentLiabilities", "totalAssets",
                 "_debtCurrent", "_ltDebtCurrent", "_shortBorrowings", "_ltDebtNoncurrent",
                 "_ltDebtAndLeasesNoncurrent", "_ltDebtTotal", "_financeLease",
-                "_financeLeaseNoncurrent", "_financeLeaseCurrent", "_debtAndLeasesInclCurrent"]
+                "_financeLeaseNoncurrent", "_financeLeaseCurrent", "_debtAndLeasesInclCurrent",
+                "_pensionLiab", "_opebLiab"]
 
 KNOWN_STANDARD_NS = {"us-gaap", "dei", "srt", "ifrs-full", "invest"}
 
@@ -527,13 +535,23 @@ def parse_company_facts(raw):
                 latest["sources"][key] = f'{v["tag"]} ({v["date"]})'
                 dates[key] = v["date"]
         total_debt, parts, _cur = compose_debt(lambda k: latest["values"].get(k), dates.get)
-        stale = sorted({d for k, d in dates.items() if d != bs_date and k != "_bsShares"
+        stale = sorted({d for k, d in dates.items() if d != bs_date and k not in ("_bsShares", "_pensionLiab", "_opebLiab")
                         and (k.startswith("_") or k in ("cash", "shortTermInvestments"))})
         if stale:
             latest["staleNote"] = ("Some balance-sheet items were not in the latest filing and come from "
                                    f"an earlier one ({', '.join(stale)}).")
         latest["values"]["totalDebt"] = total_debt
         latest["debtParts"] = parts
+        # Underfunded retirement plans on the balance sheet, for companies
+        # with no total funded-status figure.
+        lv = latest["values"]
+        if lv.get("_pensionLiab") is not None or lv.get("_opebLiab") is not None:
+            combined = "PensionAndOther" in (latest["sources"].get("_pensionLiab") or "")
+            lv["retireeLiability"] = max(0, (lv.get("_pensionLiab") or 0)
+                                         + (0 if combined else (lv.get("_opebLiab") or 0)))
+            latest["sources"]["retireeLiability"] = " + ".join(
+                latest["sources"][k] for k in ("_pensionLiab", "_opebLiab")
+                if k in latest["sources"] and not (combined and k == "_opebLiab"))
         for k in [k for k in latest["values"] if k.startswith("_") and k != "_bsShares"]:
             latest["values"].pop(k)
 
