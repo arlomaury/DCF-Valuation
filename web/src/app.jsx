@@ -240,8 +240,13 @@ function CompanyPage({ onLoad, loading, error, data, a, set, mode, setMode }) {
               // missing: some companies (Ford) report it only by segment.
               (() => {
                 const int0 = (data.financials.aligned.interestExpense || [])[0], rev0 = (data.financials.aligned.revenue || [])[0];
-                return int0 > 0 && rev0 > 0 && int0 > 0.002 * rev0 && int0 > 0.2 * Math.max(a.debt, 1)
-                  && `Interest expense of ${money(int0)} is more than 20% of the ${money(a.debt)} of debt found, so some debt is probably missing (some companies report it only by business segment). Check the balance sheet in the latest 10-Q and enter total debt above.`;
+                // No company borrows at more than about 6 points over the
+                // Treasury yield for long (that is deep junk), so interest above
+                // that rate on the debt found means debt is missing. Deere's
+                // long-term borrowings, for one, are not in any standard tag.
+                const cap = Math.max(0.12, (data.market.riskFree?.rate || 0) + 0.06);
+                return int0 > 0 && rev0 > 0 && int0 > 0.002 * rev0 && int0 > cap * Math.max(a.debt, 1)
+                  && `Interest expense of ${money(int0)} is ${pct(int0 / Math.max(a.debt, 1), 0)} of the ${money(a.debt)} of debt found - more than any company pays - so some debt is probably missing (some companies report it only by business segment or under their own labels). Check the balance sheet in the latest 10-Q and enter total debt above.`;
               })(),
               !(data.financials.aligned.capex || []).slice(0, 3).some((x) => x != null)
                 && 'Capital spending was not found in the last 3 years of filings (some companies tag it with their own labels), so capex is set equal to D&A. Check the cash-flow statement and enter the real figure on the Assumptions page.',
