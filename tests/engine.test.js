@@ -518,3 +518,11 @@ test('pension deficit falls back to the balance-sheet plan liability, after tax'
   close(DCF.defaultAssumptions(mk({ retireeLiability: 40, pensionFundedStatus: -20 })).assumptions.pensionDeficit, 15);
   close(DCF.defaultAssumptions(mk({ retireeLiability: 40, pensionFundedStatus: 5 })).assumptions.pensionDeficit, 0);
 });
+
+test('high discount-rate warning moves with the risk-free rate', () => {
+  const a = simpleAssumptions({ riskFree: 0.06 });
+  const hit = (r) => DCF.value(simpleFin(), a, 'unlevered', r).warnings.some((w) => /unusually high/.test(w));
+  assert.ok(!hit(0.14));            // 6% + 8% is still a plausible cost of capital
+  assert.ok(hit(0.15));
+  assert.match(DCF.value(simpleFin(), a, 'unlevered', 0.15).warnings.find((w) => /unusually high/.test(w)), /7% and 12%/);
+});

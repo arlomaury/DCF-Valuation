@@ -635,7 +635,10 @@
     if (g > a.riskFree) warnings.push('Terminal growth is above the risk-free rate, which implies the company eventually outgrows the economy.');
     // Sanity ranges professional reviewers check (Damodaran, Wall Street Prep).
     if (r < a.riskFree) warnings.push(`The discount rate (${pct(r)}) is below the risk-free rate (${pct(a.riskFree)}): no equity investor accepts less than a Treasury.`);
-    if (r > 0.14) warnings.push(`The discount rate (${pct(r)}) is unusually high for a listed company (most US firms sit between about 5% and 10%). Check the beta and the debt spread.`);
+    // Damodaran's January 2026 data: 80% of US companies had a cost of
+    // capital between 5.3% and 9.9% with the T-bond at 4.2%, i.e. about 1 to
+    // 6 points over the risk-free rate - so the band moves with rates.
+    if (r > Math.max(0.14, a.riskFree + 0.085)) warnings.push(`The discount rate (${pct(r)}) is unusually high for a listed company (80% of US companies sit between about ${pct(a.riskFree + 0.01, 0)} and ${pct(a.riskFree + 0.057, 0)} at today's ${pct(a.riskFree)} Treasury yield). Check the beta and the debt spread.`);
     // RONIC is a return on all invested capital, so its hurdle is the terminal
     // WACC (moved by any discount-rate override) even when valuing equity.
     const ronicHurdle = cocT.wacc + (r - pick(coc));
