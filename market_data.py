@@ -350,5 +350,21 @@ def industry_for_sic(sic):
     return DEFAULT_INDUSTRY
 
 
+# Industries whose margins swing with a commodity price or the economic
+# cycle. For these, one year's margin is a point on the cycle, not the
+# business: valuation practice (McKinsey's "Valuation", ch. on cyclical
+# companies; Damodaran's normalized earnings) uses the average across a full
+# cycle instead. Semiconductors are left out on purpose: their swings sit on
+# top of a secular shift that a six-year average would erase.
+CYCLICAL_INDUSTRIES = {
+    "Oil/Gas (Integrated)", "Oil/Gas (Production and Exploration)", "Oilfield Svcs/Equip.",
+    "Coal & Related Energy", "Metals & Mining", "Precious Metals", "Steel",
+    "Chemical (Basic)", "Paper/Forest Products", "Homebuilding", "Building Materials",
+    "Auto & Truck", "Auto Parts", "Rubber & Tires", "Air Transport", "Machinery",
+    "Trucking", "Shipbuilding & Marine",
+}
+
+
 def industry_table():
-    return [{"name": k, "unleveredBeta": b, "operatingMargin": m} for k, (b, m) in INDUSTRIES.items()]
+    return [{"name": k, "unleveredBeta": b, "operatingMargin": m, "cyclical": k in CYCLICAL_INDUSTRIES}
+            for k, (b, m) in INDUSTRIES.items()]

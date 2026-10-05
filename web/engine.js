@@ -191,6 +191,14 @@
     // year's growth is used on its own.
     const distorted = isNum(yoy) && isNum(cagr) && Math.abs(yoy - cagr) > 0.10;
     if (distorted) g1 = yoy;
+    // A cyclical company's last year (and its last three) mostly measure
+    // where the cycle was: an oil major's revenue swings 30% with the oil
+    // price. Its growth is read over the longest history available instead.
+    const cyclical = !!industry.cyclical;
+    const kLong = Math.min(5, nums(revs).length - 1);
+    const cagrLong = kLong >= 3 && revs[kLong] > 0 && revs[0] > 0 ? Math.pow(revs[0] / revs[kLong], 1 / kLong) - 1 : null;
+    const useLong = cyclical && isNum(cagrLong);
+    if (useLong) g1 = cagrLong;
     const g1Raw = g1;
     g1 = clamp(g1, -0.10, 0.40);
     // Long-run growth equal to the risk-free rate, Damodaran's default: the
@@ -199,7 +207,9 @@
     // premium (used for the cost of equity) assumes for the market. Pairing
     // that premium with a lower growth rate undervalues every company.
     const gT = isNum(overrides.terminalGrowth) ? overrides.terminalGrowth : rf;
-    why.revenueGrowth = (distorted
+    why.revenueGrowth = (useLong
+      ? `Year 1 = the ${kLong}-year revenue CAGR (${pct(cagrLong)}): ${industry.name} is cyclical, so one year's growth mostly measures the cycle`
+      : distorted
       ? `Year 1 = last year's growth (${pct(yoy)}); the ${k}-year CAGR (${pct(cagr)}) is more than 10 points away, so it reflects a one-off rather than the business today`
       : `Year 1 = average of last year's growth (${pct(yoy)}) and the ${k}-year CAGR (${pct(cagr)})`)
       + (g1 !== g1Raw ? `, capped at ${pct(g1)}` : '') + `, fading in a straight line to the ${pct(gT)} terminal rate by year ${n}.`;
@@ -213,7 +223,14 @@
     const m3 = mean(h.slice(0, 3).map(normMargin));
     const latestM = normMargin(latest);
     let m0 = isNum(latestM) ? latestM : (isNum(m3) ? m3 : 0.1);
-    if (isNum(latestM) && isNum(m3) && m3 > 0 && latestM > 0 && latestM < 0.5 * m3) {
+    // Cyclical industries: the mid-cycle margin, averaged over every year
+    // shown (six years is about one cycle), not the latest point on it.
+    const allMargins = nums(h.map(normMargin));
+    const mCycle = mean(allMargins);
+    if (cyclical && allMargins.length >= 4 && isNum(mCycle) && mCycle > 0) {
+      m0 = mCycle;
+      why.ebitMargin = `${industry.name} is cyclical, so the margin is the average over the last ${allMargins.length} years (${pct(mCycle)}, a full cycle) rather than last year's ${pct(latestM)}, and held flat.`;
+    } else if (isNum(latestM) && isNum(m3) && m3 > 0 && latestM > 0 && latestM < 0.5 * m3) {
       m0 = m3;
       why.ebitMargin = `Last year's margin (${pct(latestM)}) is under half the 3-year average, which usually means a one-off charge, so the 3-year average (${pct(m3)}) is used and held flat.`;
     }
@@ -320,7 +337,7 @@
       preferredStock: lb.preferredStock || 0,
     };
     why.stub = `Valued as of the latest balance sheet${fin.latestBalance && fin.latestBalance.date ? ` (${fin.latestBalance.date})` : ''}, ${(stubYearsOf(fin) * 12).toFixed(0)} months after the last fiscal year-end: that part of year 1 is already in the cash on that balance sheet, so only the rest of the year is counted and every later cash flow is that much closer.`;
-    why.terminalGrowth = `Equal to the 10-year Treasury yield (${pct(rf)}), the market's estimate of long-run nominal growth in the economy, and the growth rate behind the equity risk premium used here. Never set it above the risk-free rate: no company can outgrow the economy forever.`;
+    why.terminalGrowth = `Equal to the 10-year Treasury yield (${pct(rf)}), Damodaran's default: it is the market's estimate of long-run nominal growth in the economy, and the growth rate behind the equity risk premium used here. Never set it above the risk-free rate: no company can outgrow the economy forever. Many sell-side models use 2-4% instead (type it here to compare); growth only adds value when new investment earns more than the cost of capital.`;
     why.beta = `${industry.name || 'Market'} unlevered beta (${(a.unleveredBeta).toFixed(2)}, Damodaran ${market.dataDate}), re-levered at this company's market debt/equity.`;
     why.costOfDebt = rating.coverage == null
       ? (rating.assumed ? 'The company has debt but no interest expense was found in its filings, so an investment-grade BBB rating is assumed - check it.' : 'No interest expense and little or no debt, so rated AAA.')

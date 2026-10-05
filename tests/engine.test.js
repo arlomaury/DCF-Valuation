@@ -166,7 +166,10 @@ test('defaults for the demo company are sensible and explained', () => {
   close(a.revenueGrowth[0], 0.10, 1e-3);                // steady 10% grower
   close(a.terminalGrowth, data.market.riskFree.rate, 1e-12); // long-run growth = risk-free rate
   close(a.revenueGrowth[9], a.terminalGrowth, 1e-9);     // fades to terminal growth
-  close(a.ebitMargin[0], 0.16, 1e-9);                    // latest margin, held flat
+  // Machinery is cyclical, so the margin is the six-year average, not the latest 16%.
+  const hist = DCF.historicalMetrics(data.financials).map((r) => r.ebitMargin);
+  close(a.ebitMargin[0], hist.reduce((x, y) => x + y) / hist.length, 1e-9);
+  assert.match(why.ebitMargin, /cyclical/);
   close(a.taxRate[0], 0.21, 1e-3);                       // effective
   close(a.taxRate[9], 0.25, 1e-9);                       // converges to marginal
   close(a.debt, 265e6);                                  // latest 10-Q, not the 10-K
@@ -479,4 +482,29 @@ test('default margin excludes one-time write-downs (normalized base year)', () =
   const { assumptions: a, why } = DCF.defaultAssumptions(data);
   close(a.ebitMargin[0], 0.25, 1e-9);                       // (200 + 50) / 1000
   assert.match(why.ebitMargin, /write-downs/);
+});
+
+test('cyclical industries: mid-cycle margin and long-run growth, not the latest year', () => {
+  // An oil major after a price slump: margin 8% last year against a six-year
+  // average of 12.5%, revenue down 20% last year but up over five years.
+  const fin = {
+    years: [2025, 2024, 2023, 2022, 2021, 2020],
+    aligned: { revenue: [800, 1000, 1100, 1200, 900, 700], operatingIncome: [64, 120, 165, 216, 108, 77],
+      dna: [50, 50, 50, 50, 50, 50], capex: [60, 60, 60, 60, 60, 60],
+      currentAssets: [100, 100, 100, 100, 100, 100], currentLiabilities: [100, 100, 100, 100, 100, 100],
+      totalDebt: [0, 0, 0, 0, 0, 0], currentDebt: [0, 0, 0, 0, 0, 0] },
+  };
+  const market = (cyclical) => ({ riskFree: { rate: 0.04 }, erp: 0.05, marginalTaxRate: 0.25,
+    industries: [{ name: 'Oil/Gas (Integrated)', unleveredBeta: 0.9, operatingMargin: 0.1, cyclical }] });
+  const base = { financials: fin, industry: 'Oil/Gas (Integrated)', quote: { price: 10 }, shares: { value: 100 } };
+  const cyc = DCF.defaultAssumptions({ ...base, market: market(true) });
+  const margins = [64 / 800, 120 / 1000, 165 / 1100, 216 / 1200, 108 / 900, 77 / 700];
+  close(cyc.assumptions.ebitMargin[0], margins.reduce((a, b) => a + b) / 6, 1e-4);
+  close(cyc.assumptions.revenueGrowth[0], Math.pow(800 / 700, 1 / 5) - 1, 1e-4);
+  assert.match(cyc.why.ebitMargin, /cyclical/);
+  assert.match(cyc.why.revenueGrowth, /cyclical/);
+  // The same history in a non-cyclical industry keeps the old rules.
+  const flat = DCF.defaultAssumptions({ ...base, market: market(false) });
+  close(flat.assumptions.ebitMargin[0], 0.08, 1e-4);
+  assert.doesNotMatch(flat.why.ebitMargin, /cyclical/);
 });
